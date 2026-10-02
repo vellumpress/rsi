@@ -32,6 +32,7 @@ export function PlanScreen({ userId }: { userId: string | null }) {
   const [draft, setDraft] = useState("");
   const [thread, setThread] = useState<ChatTurn[]>([]);
   const [chatBusy, setChatBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -41,6 +42,9 @@ export function PlanScreen({ userId }: { userId: string | null }) {
       setOrders(loaded.orders);
       setCapital(loaded.capital);
       setFilled(loaded.filled);
+      if (loaded.capital != null) {
+        setAmount((current) => current.trim() ? current : String(loaded.capital));
+      }
     }).catch(() => {
       if (!cancel) setError("Today's plan could not be read. No orders are shown.");
     });
@@ -52,7 +56,7 @@ export function PlanScreen({ userId }: { userId: string | null }) {
   const spent = orders.reduce((sum, order) => sum + order.dollars, 0);
   const cash = capital == null ? null : Math.round((capital - spent) * 100) / 100;
 
-  const build = async (event: { preventDefault(): void }) => {
+  const build = async (event: { preventDefault(): void }, rebuild = false) => {
     event.preventDefault();
     if (!userId) return;
     const value = Number(amount);
@@ -69,7 +73,8 @@ export function PlanScreen({ userId }: { userId: string | null }) {
     }
     setBusy(true);
     setError(null);
-    const { error: invokeError } = await supabase.functions.invoke("rsi-onboard", { body: { amount: value } });
+    setNotice(null);
+    const { data, error: invokeError } = await supabase.functions.invoke("rsi-onboard", { body: { amount: value, rebuild } });
     if (invokeError) {
       setOrders([]);
       setCapital(null);
@@ -86,6 +91,10 @@ export function PlanScreen({ userId }: { userId: string | null }) {
         setOrders(loaded.orders);
         setCapital(loaded.capital);
         setFilled(loaded.filled);
+        const serverNotice = data && typeof data === "object" && typeof (data as { notice?: unknown }).notice === "string"
+          ? (data as { notice: string }).notice
+          : null;
+        setNotice(serverNotice);
       }
     } catch {
       setOrders([]);
@@ -152,9 +161,22 @@ export function PlanScreen({ userId }: { userId: string | null }) {
           </label>
           <div className="row-actions">
             <button type="submit" className="primary" disabled={busy || !userId}>{busy ? "Building" : "Build today's plan"}</button>
+            {orders.length > 0 ? (
+              <button
+                type="button"
+                disabled={busy || !userId}
+                onClick={() => {
+                  if (!window.confirm("Rebuild today's plan? This replaces orders that are not already marked done.")) return;
+                  void build({ preventDefault() {} }, true);
+                }}
+              >
+                Rebuild
+              </button>
+            ) : null}
           </div>
         </form>
         {!userId ? <p>Sign in to build the plan.</p> : null}
+        {notice ? <p role="status">{notice}</p> : null}
         {error ? <p className="warn" role="alert">{error}</p> : null}
       </section>
 

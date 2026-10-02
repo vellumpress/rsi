@@ -392,6 +392,21 @@ var STARTER_UNIVERSE = [
 ];
 var ONBOARD_PLAN = "rsi-onboard-plan-v1";
 var UNIVERSE = new Set(STARTER_UNIVERSE);
+var REBUILD_CONFIRM = "An order is already marked done today. Choose Rebuild and confirm to replace the plan. No new orders were stored.";
+function reuseDecision(input) {
+  if (!input.existing || input.existing.notedOn !== input.today) return "rebuild";
+  if (input.existing.filledToday && !input.rebuild) {
+    const same = sameAmount(input.existing.amount, input.amount);
+    return same ? "reuse" : "confirm";
+  }
+  if (!input.rebuild && sameAmount(input.existing.amount, input.amount)) return "reuse";
+  return "rebuild";
+}
+function sameAmount(left, right) {
+  const a = toCents(left);
+  const b = toCents(right);
+  return a != null && a === b;
+}
 function planPrompt(amount) {
   return [
     `Starter universe (individual large-cap stocks only): ${STARTER_UNIVERSE.join(", ")}.`,
@@ -671,8 +686,26 @@ Deno.serve(async (req) => {
     return json(400, { error: "Send an amount. No orders were stored." }, origin);
   }
   const amount = typeof body.amount === "number" ? body.amount : Number(body.amount);
+  const rebuild = body.rebuild === true;
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const userId = data.user.id;
+  if (!Number.isFinite(amount) || amount <= 0) return json(422, { error: "Enter how much to invest. No orders were stored." }, origin);
+  if (amount > MAX_CAPITAL_DOLLARS) return json(422, { error: "That amount is too large to size safely. No orders were stored." }, origin);
+  let existing;
+  try {
+    existing = await readToday(admin, userId, today);
+  } catch {
+    return json(422, { error: "Today's plan could not be read. No orders were stored." }, origin);
+  }
+  const decision = reuseDecision({ today, amount, rebuild, existing });
+  if (decision !== "rebuild") {
+    return json(200, {
+      ok: true,
+      plan: ONBOARD_PLAN,
+      sticky: true,
+      notice: decision === "confirm" ? REBUILD_CONFIRM : void 0
+    }, origin);
+  }
   const result = await runOnboard({
     userId,
     amount,
@@ -690,6 +723,25 @@ Deno.serve(async (req) => {
     orders: result.plan.orders.length
   }, origin);
 });
+async function readToday(admin, userId, today) {
+  const recs = await admin.from("recommendations").select("id, inputs, created_at").eq("user_id", userId).eq("noted_on", today).order("created_at", { ascending: true });
+  if (recs.error) throw new Error(recs.error.message);
+  const rows = (recs.data ?? []).flatMap((row2) => {
+    const inputs = row2.inputs && typeof row2.inputs === "object" ? row2.inputs : null;
+    if (inputs?.plan !== ONBOARD_PLAN || typeof inputs.run !== "string") return [];
+    return [{ id: String(row2.id), run: inputs.run, capital: Number(inputs.capital) }];
+  });
+  if (rows.length === 0) return null;
+  const latestRun = rows[rows.length - 1].run;
+  const latest = rows.filter((row2) => row2.run === latestRun);
+  const fills = await admin.from("fills").select("recommendation_id").eq("user_id", userId).in("recommendation_id", rows.map((row2) => row2.id));
+  if (fills.error) throw new Error(fills.error.message);
+  return {
+    notedOn: today,
+    amount: latest[0]?.capital ?? Number.NaN,
+    filledToday: (fills.data ?? []).some((row2) => row2.recommendation_id)
+  };
+}
 async function fetchChart(ticker) {
   const response = await fetch(yahooChartUrl(ticker), { headers: { "user-agent": "rsi-onboard/1.0" } });
   if (!response.ok) throw new Error(`${ticker} price could not be fetched. No orders were stored.`);
