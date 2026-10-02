@@ -36,15 +36,38 @@ The committed snapshot prices SPY and QQQ so the scorecard has benchmarks. Add a
 
 The price workflow only commits `public/prices.json`. It uses the default `GITHUB_TOKEN`, so that bot push does not start another workflow run and does not redeploy GitHub Pages. The client reads the raw snapshot so a new file can land without a Pages deploy. The next human push to `main` publishes the site itself. Pages is built with base path `/rsi/` and is served at https://vellumpress.github.io/rsi/.
 
+## Sign in and Grok
+
+The desk is private. Sign up and sign in with email and password. Supabase Auth keeps the refresh token in this browser (`rsi.auth`), refreshes the access token, and sends that token to the edge functions. There is no passcode and no place to paste an xAI key. A leftover `rsi.llm` value is deleted on load.
+
+Only addresses in `public.allowlist` can get past signup or spend credits. The table is seeded with `miketankh@gmail.com`. The before-user-created hook rejects every other signup. Row security lets a signed-in user read only their own allowlist row. `rsi-chat`, `rsi-onboard`, and `rsi-daily` check the list again and return `403` with "This RSI desk is private." before any model call. Someone who is not on the list sees that same sentence and cannot open the desk.
+
+Chat is with the Boss. The server prepends a system message the browser cannot override: no trades, no invented prices, no edits to an immutable rule. A request to change a rule is stored and the Boss says it waits for the quarterly review. Other feedback (an exclusion, pace, voice, risk) is tagged and dated in `user_feedback`. Constraints apply on the next engine run. Notes stay in `rsi.feedback`, not in the desk export.
+
+Chat and thesis generation call `rsi-chat` with the session. The function verifies the JWT, checks the allowlist, stores any feedback, then allows 12 calls a minute and 80 a day. The server holds `XAI_API_KEY` and calls `grok-4.7` (override with the `RSI_MODEL` secret). Pass `stream: true` for a server-sent reply. The browser never sees the key.
+
+`npm run e2e` reruns the whole loop. `supabase start` needs Docker, which this desk does not assume. The suite applies `supabase/migrations/20261002203818_rsi_schema.sql` on embedded Postgres with the auth hooks a local stack would provide, fetches real Yahoo charts for AAPL, MSFT, XOM, SPY, and QQQ, and time-travels a funded desk through Friday sweeps.
+
+## Deploy
+
+Project ref `ojntnbaakfowmnrsetbb`. Apply these in order. Do not run them against any other project.
+
+1. In the SQL editor, run `supabase/migrations/20261002203818_rsi_schema.sql`.
+2. Authentication → Hooks → Before user created → Postgres function `public.hook_before_user_created`. Enable it. `config.toml` records the same hook, but this project is updated from the dashboard, not `supabase config push`.
+3. Authentication → URL configuration. Site URL `https://vellumpress.github.io/rsi/`. Add that URL under redirect URLs.
+4. Confirm the secret `XAI_API_KEY` is set. Do not put it in the frontend. Optional secret `RSI_MODEL` (default `grok-4.7`). `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are already present in functions.
+5. Deploy each function as the single file `index.ts` (Management API multipart, metadata `entrypoint_path` `index.ts`):
+   - `rsi-chat` with `verify_jwt` true. File `supabase/functions/rsi-chat/index.ts`.
+   - `rsi-onboard` with `verify_jwt` true. File `supabase/functions/rsi-onboard/index.ts`.
+   - `rsi-daily` with `verify_jwt` false. File `supabase/functions/rsi-daily/index.ts`. It rejects any caller except the service role and skips accounts that are not on the allowlist. It does not call xAI.
+6. Delete the passcode function `rsi-grok`. It is not on the allowlist path and can still spend credits.
+7. Build the site with `VITE_SUPABASE_URL=https://ojntnbaakfowmnrsetbb.supabase.co` and `VITE_SUPABASE_ANON_KEY` set to the anon key. The anon key is safe in the frontend. The service role is not.
+
 ## Homepage and Grok
 
 The homepage shows today's actions, the Friday sweep, the month's scorecard, the book against its peak and against SPY and QQQ, and the newest thesis. Research, the ledger, the rulebook, and settings sit behind the nav.
 
-Chat defaults to the RSI server. Settings asks for a passcode, stored in this browser under `rsi.llm`. It is not part of a desk export and it is not written to the log. The browser sends it only as the `x-rsi-passcode` header to `https://ojntnbaakfowmnrsetbb.supabase.co/functions/v1/rsi-grok`. That function accepts the published site origin. The other choice is your own xAI key, sent only to `https://api.x.ai`. Create that key at [console.x.ai](https://console.x.ai). The default model is `grok-4.7`, the most capable chat model named in the xAI docs. The model id can be changed in Settings.
-
-`api.x.ai` answered a browser preflight from `https://vellumpress.github.io` with `Access-Control-Allow-Origin: *`, so the static site calls `POST /v1/chat/completions` directly. If xAI removes that header, the smallest fix is a proxy you deploy under your own account that forwards the body and does not log the key. This repo does not add a shared backend.
-
-The chat can explain the book and propose a trade or a thesis. A proposal is not a write. Confirming a trade still runs the same caps, stocks-only check, and ledger guards. With no key, a few questions ("what should I do today?") are answered from local state.
+The chat can explain the book and propose a trade or a thesis. A proposal is not a write. Confirming a trade still runs the same caps, stocks-only check, and ledger guards.
 
 Generate thesis runs the page-2 scout, the page-5 card, and a separate red team, using the rule summary in `src/lib/playbookSummary.ts`. Output is JSON, ETFs are rejected, snapshot prices are not invented, and model figures are labeled "model-generated, verify". The saved card is a draft. Approving it is a later click on the research page, and that click still does not trade until you confirm an entry. A new ticker is not committed from the browser. Download `watchlist.json` or edit [config/watchlist.json](https://github.com/vellumpress/rsi/edit/main/config/watchlist.json). A monthly pitch on the brief is a prompt, not an automatic scout.
 
@@ -53,6 +76,7 @@ Generate thesis runs the page-2 scout, the page-5 card, and a separate red team,
 ```bash
 npm ci
 npm test
+npm run e2e
 npm run lint
 npm run build
 ```

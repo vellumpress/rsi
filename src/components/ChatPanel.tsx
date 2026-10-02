@@ -1,8 +1,9 @@
 import { useState } from "react";
+import { bossContext, type BossSnapshot } from "../lib/boss";
 import { answerLocally, chatSystemPrompt, commitScreened, extractProposal, factsFromActions, screenProposal, type ChatFacts, type Screened } from "../lib/chat";
 import { classifyInstrument } from "../lib/instruments";
 import { reviewManualTrade } from "../lib/guards";
-import { completeGrok, hasGrokCredential, loadLlmSettings } from "../lib/llm";
+import { completeGrok } from "../lib/llm";
 import { moneyAuto } from "../lib/money";
 import { useDesk } from "../state";
 import { GenerateThesis } from "./GenerateThesis";
@@ -22,27 +23,26 @@ export function ChatPanel() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const facts = buildFacts(desk);
+  const context = bossContext(bossSnapshot(desk));
 
   const ask = async () => {
     const question = text.trim();
     if (!question || busy) return;
     setText("");
     setNotice(null);
+    const stored = desk.recordFeedback(question);
     const local = answerLocally(question, facts);
-    const settings = loadLlmSettings(typeof localStorage === "undefined" ? null : localStorage);
-    if (!hasGrokCredential(settings)) {
-      const how = settings.mode === "server" ? "Add the RSI server passcode in Settings." : "Add an xAI API key in Settings.";
-      const help = local ?? `${how} Until then I can answer from the desk: what should I do today, what is the book worth, which rule fired, and how the benchmarks compare. Not financial advice.`;
-      setBubbles((current) => [...current, { role: "user", text: question }, { role: "assistant", text: help }]);
-      return;
-    }
     setBubbles((current) => [...current, { role: "user", text: question }]);
+    if (stored.tag === "rule-change") {
+      setBubbles((current) => [...current, { role: "assistant", text: stored.message }]);
+    }
     setBusy(true);
     try {
       const reply = await completeGrok({
-        settings,
+        stream: true,
+        feedback: { text: question, date: desk.today, id: `chat-${desk.feedback.length}` },
         messages: [
-          { role: "system", content: chatSystemPrompt(facts) },
+          { role: "system", content: `${context.prompt}\n\n${chatSystemPrompt(facts)}` },
           ...bubbles.slice(-6).map((bubble) => ({ role: bubble.role, content: bubble.text })),
           { role: "user", content: question },
         ],
@@ -50,7 +50,8 @@ export function ChatPanel() {
       const raw = extractProposal(reply);
       const screen = raw ? screenProposal(raw, facts) : undefined;
       const visible = reply.replace(/```proposal[\s\S]*?```/i, "").replace(/```json[\s\S]*?```/i, "").trim();
-      setBubbles((current) => [...current, { role: "assistant", text: visible || screen?.reason || "No reply.", screen }]);
+      const cited = context.citations.length ? `${visible || screen?.reason || "No reply."}\n\nSources: ${context.citations.join("; ")}.` : visible || screen?.reason || "No reply.";
+      setBubbles((current) => [...current, { role: "assistant", text: cited, screen }]);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Grok did not answer.";
       setBubbles((current) => [...current, { role: "assistant", text: local ? `${message}\n${local}` : message }]);
@@ -115,14 +116,14 @@ export function ChatPanel() {
   return (
     <section className="chat" aria-labelledby="chat-title">
       <div className="panel-mark" aria-hidden="true"><span className="shape circle" /></div>
-      <p className="kicker">Ask the desk</p>
-      <h2 id="chat-title">Chat</h2>
-      <p className="lede">Grok can explain the book and propose a trade or a thesis. It cannot write the ledger, approve a card, or bend a rule until you confirm. Not financial advice.</p>
+      <p className="kicker">The person who runs this</p>
+      <h2 id="chat-title">The Boss</h2>
+      <p className="lede">The Boss can see the book, today's orders, the cards, the rulebook, and the engine log. It cannot place a trade, invent a price, or bend an immutable rule. A rule change waits for the quarter. Not financial advice.</p>
       <div className="transcript" aria-live="polite">
-        {bubbles.length === 0 ? <p className="empty">Try “what should I do today?” It answers from this desk even with no key.</p> : null}
+        {bubbles.length === 0 ? <p className="empty">Try “what should I do today?” Grok answers from the signed-in session. Not financial advice.</p> : null}
         {bubbles.map((bubble, index) => (
           <article key={`${bubble.role}-${index}`} className={`bubble ${bubble.role}`}>
-            <p className="kicker">{bubble.role === "user" ? "You" : "Desk"}</p>
+            <p className="kicker">{bubble.role === "user" ? "You" : "Boss"}</p>
             <p>{bubble.text}</p>
             {bubble.screen ? (
               <div className="proposal">
@@ -156,6 +157,37 @@ export function ChatPanel() {
       {showGenerator ? <GenerateThesis /> : null}
     </section>
   );
+}
+
+function bossSnapshot(desk: ReturnType<typeof useDesk>): BossSnapshot {
+  const { brief } = desk.derived;
+  const card = desk.state.scorecards.at(-1) ?? null;
+  const pending = desk.state.rulebook.changelog.at(-1);
+  return {
+    today: desk.today,
+    portfolio: desk.derived.lots.filter((lot) => lot.shares > 0).map((lot) => ({
+      ticker: lot.ticker,
+      shares: lot.shares,
+      price: desk.prices?.quotes[lot.ticker]?.price ?? null,
+    })),
+    actions: [...brief.schedule, ...brief.engine]
+      .filter((action) => action.side === "buy" || action.side === "sell")
+      .map((action) => ({ date: desk.today, ticker: action.ticker, side: action.side, rule: action.rule, reason: action.reason })),
+    theses: desk.state.theses.filter((thesis) => !thesis.archived).map((thesis) => ({
+      ticker: thesis.ticker,
+      theme: thesis.theme,
+      bear: thesis.bearCase,
+      probability: thesis.probability,
+    })),
+    rulebookVersion: desk.state.rulebook.version,
+    pendingProposal: pending ? `${pending.parameter} → ${pending.next}` : null,
+    scorecard: card ? `${card.month} Brier ${card.brier ?? "unset"}` : null,
+    calibrationNote: card?.brier == null ? null : `Brier ${card.brier}`,
+    lessons: [],
+    engineLog: { date: brief.date, note: brief.fridaySweep ? "Friday sweep." : "Daily check." },
+    dataHealth: brief.quotes.map((row) => ({ ticker: row.ticker, status: row.block })),
+    feedback: desk.feedback,
+  };
 }
 
 function buildFacts(desk: ReturnType<typeof useDesk>): ChatFacts {

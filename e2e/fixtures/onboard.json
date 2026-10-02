@@ -1,0 +1,33 @@
+{
+  "core": [
+    {
+      "ticker": "AAPL",
+      "theme": "hardware",
+      "probability": 60,
+      "bear": "The hardware cycle turns and the next reported number misses.",
+      "kill": "Two reported milestones miss.",
+      "instrumentType": "EQUITY",
+      "quoteType": "EQUITY"
+    },
+    {
+      "ticker": "MSFT",
+      "theme": "software",
+      "probability": 58,
+      "bear": "The software multiple compresses and reported growth misses.",
+      "kill": "Two reported milestones miss.",
+      "instrumentType": "EQUITY",
+      "quoteType": "EQUITY"
+    }
+  ],
+  "conviction": [
+    {
+      "ticker": "XOM",
+      "theme": "oil",
+      "probability": 45,
+      "bear": "The oil tape is a cycle and the kill is a broken balance sheet.",
+      "kill": "Two reported milestones miss.",
+      "instrumentType": "EQUITY",
+      "quoteType": "EQUITY"
+    }
+  ]
+}

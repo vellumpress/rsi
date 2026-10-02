@@ -58,6 +58,7 @@ img { max-width: 100%; }
 }
 .brand { font-weight: 700; font-size: clamp(3rem, 12vw, 5.5rem); letter-spacing: -0.06em; line-height: 0.85; margin: 0; }
 .issue { margin: 0 0 0.4rem; font-size: 0.78rem; letter-spacing: 0.14em; text-transform: uppercase; }
+.account { margin: 0; font-size: 0.85rem; text-transform: none; letter-spacing: 0; }
 .kicker, .meta, .funding, .fine, .action-title, .side, .ticker, .amount { letter-spacing: 0.08em; text-transform: uppercase; }
 .kicker { margin: 0 0 0.35rem; font-size: 0.72rem; }
 .funding, .fine, .empty { color: var(--muted); font-size: 0.92rem; }
@@ -233,6 +234,9 @@ th { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; font-w
 .proposal { border-left: 8px solid var(--yellow); padding-left: 0.7rem; }
 
 .desk-foot { border-top: 8px solid var(--ink); padding: 1rem 0 0; margin-top: 1rem; }
+
+.auth-card { max-width: 36rem; }
+.auth-card h2 { font-size: clamp(2rem, 6vw, 3rem); letter-spacing: -0.04em; margin: 0.2rem 0 0.6rem; }
 
 :focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }

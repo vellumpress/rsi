@@ -1,86 +1,75 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { defaultState, serializeState } from "./storage";
-import {
-  DEFAULT_GROK_MODEL,
-  GROK_CHAT_URL,
-  LLM_STORAGE_KEY,
-  RSI_GROK_URL,
-  deskExportContainsSecret,
-  grokFailureMessage,
-  grokRequest,
-  hasGrokCredential,
-  loadLlmSettings,
-  resolveModel,
-  saveLlmSettings,
-  type LlmSettings,
-} from "./llm";
-
-function memoryStore() {
-  const data = new Map<string, string>();
-  return {
-    data,
-    getItem: (key: string) => data.get(key) ?? null,
-    setItem: (key: string, value: string) => {
-      data.set(key, value);
-    },
-    removeItem: (key: string) => {
-      data.delete(key);
-    },
-  };
-}
+import { AUTH_OPTIONS, forgetLegacySecrets, LEGACY_LLM_KEY } from "./supabase";
+import { chatCompletionRequest, DEFAULT_GROK_MODEL, deskExportContainsSecret, grokFailureMessage, grokRequest, readSseDelta, resolveModel, RSI_CHAT_URL } from "./llm";
 
 const messages = [{ role: "user" as const, content: "hello" }];
 
-describe("llm connection", () => {
-  it("keeps a passcode and an xAI key out of the desk export", () => {
-    const store = memoryStore();
-    saveLlmSettings(store, { mode: "server", apiKey: "", passcode: "rsi-pass-secret", model: "" });
-    expect(store.data.has(LLM_STORAGE_KEY)).toBe(true);
-    expect(store.data.has("rsi.v2")).toBe(false);
-    expect(loadLlmSettings(store)).toMatchObject({ mode: "server", passcode: "rsi-pass-secret", model: DEFAULT_GROK_MODEL });
+describe("signed-in grok", () => {
+  it("keeps secrets out of the desk export and drops a leftover passcode", () => {
+    const data = new Map<string, string>();
+    const store = {
+      getItem: (key: string) => data.get(key) ?? null,
+      setItem: (key: string, value: string) => data.set(key, value),
+      removeItem: (key: string) => data.delete(key),
+    };
+    store.setItem(LEGACY_LLM_KEY, JSON.stringify({ passcode: "rsi-pass-secret", apiKey: "xai-test-secret" }));
+    forgetLegacySecrets(store);
+    expect(store.getItem(LEGACY_LLM_KEY)).toBeNull();
     const desk = defaultState("2026-10-02");
     expect(deskExportContainsSecret(desk, "rsi-pass-secret")).toBe(false);
-    expect(serializeState(desk).includes("rsi-pass-secret")).toBe(false);
+    expect(deskExportContainsSecret(desk, "xai-test-secret")).toBe(false);
     expect(serializeState(desk).includes("xai-test-secret")).toBe(false);
   });
 
-  it("routes server mode to the RSI function and key mode to api.x.ai", () => {
-    const server: LlmSettings = { mode: "server", apiKey: "xai-test-secret", passcode: "rsi-pass-secret", model: "grok-4.7" };
-    const viaServer = grokRequest({ settings: server, messages });
-    expect(RSI_GROK_URL).toBe("https://ojntnbaakfowmnrsetbb.supabase.co/functions/v1/rsi-grok");
-    expect(viaServer.url).toBe(RSI_GROK_URL);
-    expect(viaServer.headers["x-rsi-passcode"]).toBe("rsi-pass-secret");
-    expect(viaServer.headers.Authorization).toBeUndefined();
-    expect(viaServer.body.includes("rsi-pass-secret")).toBe(false);
-    expect(viaServer.body.includes("xai-test-secret")).toBe(false);
-    expect(JSON.parse(viaServer.body).model).toBe("grok-4.7");
-
-    const viaKey = grokRequest({ settings: { ...server, mode: "key" }, messages });
-    expect(viaKey.url).toBe(GROK_CHAT_URL);
-    expect(viaKey.headers.Authorization).toBe("Bearer xai-test-secret");
-    expect(viaKey.headers["x-rsi-passcode"]).toBeUndefined();
-    expect(hasGrokCredential({ ...server, passcode: "" })).toBe(false);
-    expect(hasGrokCredential({ ...server, mode: "key", apiKey: "" })).toBe(false);
-    expect(resolveModel("grok-4.5")).toBe("grok-4.5");
+  it("sends the session token to the chat function and never a passcode or xAI key", () => {
+    const request = grokRequest({ accessToken: "session-access-token", messages });
+    expect(RSI_CHAT_URL).toBe("https://ojntnbaakfowmnrsetbb.supabase.co/functions/v1/rsi-chat");
+    expect(request.url).toBe(RSI_CHAT_URL);
+    expect(request.headers.Authorization).toBe("Bearer session-access-token");
+    expect(request.headers["x-rsi-passcode"]).toBeUndefined();
+    expect(request.body.includes("session-access-token")).toBe(false);
+    expect(request.body.includes("xai-")).toBe(false);
+    expect(JSON.parse(request.body).messages).toEqual(messages);
+    expect(AUTH_OPTIONS.persistSession).toBe(true);
+    expect(AUTH_OPTIONS.autoRefreshToken).toBe(true);
+    expect(resolveModel("")).toBe(DEFAULT_GROK_MODEL);
   });
 
-  it("names a bad passcode and a rate limit without repeating the secret", () => {
-    expect(grokFailureMessage(401, { error: "nope rsi-pass-secret" }, "server", "rsi-pass-secret")).toBe(
-      "The passcode was refused. Check it in Settings. Nothing was written.",
-    );
-    expect(grokFailureMessage(429, { error: "slow down" }, "server", "rsi-pass-secret")).toMatch(/rate limited/i);
-    expect(grokFailureMessage(429, { error: "slow down" }, "server", "rsi-pass-secret")).not.toMatch(/rsi-pass-secret/);
-    expect(grokFailureMessage(502, { error: "upstream rsi-pass-secret failed" }, "server", "rsi-pass-secret")).toBe("upstream [redacted] failed");
-    expect(grokFailureMessage(400, { error: "bad model" }, "key")).toBe("bad model");
+  it("names a private desk and a rate limit", () => {
+    expect(grokFailureMessage(403, { error: "nope" })).toBe("This RSI desk is private.");
+    expect(grokFailureMessage(429, { error: "slow down" })).toMatch(/rate limited/i);
+    expect(grokFailureMessage(401, {})).toMatch(/Sign in again/);
+  });
+});
+
+describe("function gates", () => {
+  const chat = readFileSync("supabase/functions/rsi-chat/index.ts", "utf8");
+  const onboard = readFileSync("supabase/functions/rsi-onboard/index.ts", "utf8");
+  const daily = readFileSync("supabase/functions/rsi-daily/index.ts", "utf8");
+
+  it("checks the allowlist before any Grok call", () => {
+    for (const source of [chat, onboard, daily]) {
+      expect(source).toContain("This RSI desk is private.");
+      expect(source).toContain("allowlist");
+    }
+    expect(chat.indexOf("allowlist")).toBeLessThan(chat.indexOf("api.x.ai"));
+    expect(onboard).not.toContain("api.x.ai");
+    expect(daily).not.toContain("api.x.ai");
+    expect(daily).toContain("SUPABASE_SERVICE_ROLE_KEY");
+    expect(chat).toContain("verify the signed-in user");
+    expect(chat.indexOf("user_feedback")).toBeLessThan(chat.indexOf("api.x.ai"));
+    expect(chat).toContain("immutable");
+    expect(chat).toContain("stream");
+    expect(chat).not.toContain("proposeRuleChange");
   });
 
-  it("keeps an older saved key on the key path", () => {
-    const store = memoryStore();
-    store.setItem(LLM_STORAGE_KEY, JSON.stringify({ apiKey: "xai-test-secret", model: "grok-4.7" }));
-    expect(loadLlmSettings(store).mode).toBe("key");
-  });
-
-  it("refuses a model id that is not a token", () => {
-    expect(() => resolveModel("grok 4; rm")).toThrow(/token/);
+  it("matches the live chat-completions shape and reads a streamed delta", () => {
+    const body = chatCompletionRequest({ model: "grok-4.7", temperature: 0.2, messages, stream: true });
+    expect(body).toEqual({ model: "grok-4.7", temperature: 0.2, messages, stream: true });
+    expect(body).not.toHaveProperty("api_key");
+    const chunk = 'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\ndata: [DONE]\n';
+    expect(readSseDelta(chunk)).toBe("Hello");
   });
 });
