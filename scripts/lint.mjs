@@ -34,6 +34,8 @@ const html = await readFile("index.html", "utf8");
 if (!html.includes("Content-Security-Policy")) failures.push("index.html: missing Content-Security-Policy.");
 if (!html.includes("https://query1.finance.yahoo.com")) failures.push("index.html: CSP is missing the Yahoo connect source.");
 if (!html.includes("https://raw.githubusercontent.com")) failures.push("index.html: CSP is missing the snapshot connect source.");
+if (!html.includes("https://api.x.ai")) failures.push("index.html: CSP is missing the xAI connect source.");
+if (!html.includes("font-src 'self'")) failures.push("index.html: fonts must stay self-hosted.");
 
 if (failures.length) {
   console.error(failures.join("\n"));
