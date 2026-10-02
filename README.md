@@ -26,7 +26,7 @@ One screen. Sign in, enter how much to invest, and read today's orders.
 
 `rsi-onboard` stores the amount, fetches Yahoo prices for the starter universe in `src/lib/onboardPlan.ts` (AAPL, MSFT, GOOGL, AMZN, NVDA, META, JPM, JNJ, UNH, XOM, COST, CAT), and asks Grok (`grok-4.7`) to pick 8 core names and 3–5 themes from that list. The code rejects anything outside the list, then sizes the plan: 30% core, 45% conviction bought in thirds (only the first third today), 25% cash, 15% cap per name, whole shares. A stale, jumped, missing, or non-equity price stores nothing and the screen shows the error instead of orders. SPY and QQQ are not in the universe.
 
-The list is ticker, BUY or SELL, whole shares, reference price, dollar amount, and a one-line reason. **Mark as done** writes a fill. The app never places a trade.
+The list is ticker, BUY or SELL, whole shares, reference price, dollar amount, and a one-line reason. **Mark as done** writes a fill. The app never places a trade. The same amount on the same day returns the stored plan and does not call Grok again. A different amount builds a new plan. **Rebuild** does that only after a confirm, and a fill already recorded today blocks a new plan until that confirm.
 
 A Boss box under the list calls `rsi-chat`. The server loads the stored plan into the system message. The browser does not send the orders.
 

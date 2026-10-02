@@ -76,6 +76,36 @@ export interface RunOnboardInput {
 
 export type OnboardResult = { ok: true; plan: StoredPlan } | { ok: false; error: string };
 
+export const REBUILD_CONFIRM = "An order is already marked done today. Choose Rebuild and confirm to replace the plan. No new orders were stored.";
+
+export interface ExistingDay {
+  notedOn: string;
+  amount: number;
+  filledToday: boolean;
+}
+
+/** Same amount today stays. A new amount rebuilds. A fill blocks that unless Rebuild was confirmed. */
+export function reuseDecision(input: {
+  today: string;
+  amount: number;
+  rebuild: boolean;
+  existing: ExistingDay | null;
+}): "reuse" | "rebuild" | "confirm" {
+  if (!input.existing || input.existing.notedOn !== input.today) return "rebuild";
+  if (input.existing.filledToday && !input.rebuild) {
+    const same = sameAmount(input.existing.amount, input.amount);
+    return same ? "reuse" : "confirm";
+  }
+  if (!input.rebuild && sameAmount(input.existing.amount, input.amount)) return "reuse";
+  return "rebuild";
+}
+
+function sameAmount(left: number, right: number): boolean {
+  const a = toCents(left);
+  const b = toCents(right);
+  return a != null && a === b;
+}
+
 export function planPrompt(amount: number): string {
   return [
     `Starter universe (individual large-cap stocks only): ${STARTER_UNIVERSE.join(", ")}.`,
