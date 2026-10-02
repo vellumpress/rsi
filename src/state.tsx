@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { absorbFeedback, classifyFeedback, constraintsFromFeedback, persistFeedback, type UserFeedback } from "./lib/boss";
 import { deriveDesk, briefSignature } from "./lib/brief";
+import { loadFeedback, saveFeedback } from "./lib/feedbackStore";
 import { quarterKey, todayISO } from "./lib/dates";
 import { exampleThesis } from "./lib/example";
 import { uid } from "./lib/id";
@@ -9,7 +11,7 @@ import { safeAllocate } from "./lib/allocation";
 import { defaultState, importState, loadState, saveState, serializeState } from "./lib/storage";
 import type { BriefAction, DeskState, Postmortem, PriceBook, Scorecard, Settings, Thesis, Trade, TrancheTag } from "./types";
 
-export type Tab = "brief" | "check" | "loop" | "capital" | "theses" | "ledger" | "rulebook" | "history";
+export type Tab = "brief" | "check" | "loop" | "capital" | "theses" | "ledger" | "rulebook" | "history" | "engine";
 
 export interface TradeDraft {
   date: string;
@@ -53,6 +55,8 @@ interface DeskApi {
   savePostmortem: (note: Postmortem) => void;
   changeRule: (input: { parameter: string; next: number; evidence: string }) => string | null;
   cycleRulebook: (evidence: string) => string | null;
+  feedback: UserFeedback[];
+  recordFeedback: (text: string) => { tag: UserFeedback["tag"]; message: string };
   draft: TradeDraft | null;
   stageTrade: (draft: TradeDraft) => void;
   clearDraft: () => void;
@@ -94,7 +98,9 @@ export function DeskProvider({ children }: { children: ReactNode }) {
   );
   const [installEvent, setInstallEvent] = useState<InstallPrompt | null>(null);
 
-  const derived = useMemo(() => deriveDesk(state, prices, today), [state, prices, today]);
+  const [feedback, setFeedback] = useState<UserFeedback[]>(() => loadFeedback(browserMemory()));
+  const constraints = useMemo(() => constraintsFromFeedback(feedback), [feedback]);
+  const derived = useMemo(() => deriveDesk(state, prices, today, undefined, constraints), [state, prices, today, constraints]);
 
   useEffect(() => {
     try {
@@ -300,6 +306,15 @@ export function DeskProvider({ children }: { children: ReactNode }) {
       }));
       return null;
     },
+    feedback,
+    recordFeedback: (text) => {
+      const item = classifyFeedback(text, today, uid());
+      const next = persistFeedback(feedback, item);
+      setFeedback(next);
+      saveFeedback(browserMemory(), next);
+      const absorbed = absorbFeedback(state.rulebook, item);
+      return { tag: item.tag, message: absorbed.message };
+    },
     ackReview: (action) => {
       const key = action.id.split(":")[1] ?? null;
       setState((current) => {
@@ -358,6 +373,11 @@ export function DeskProvider({ children }: { children: ReactNode }) {
   };
 
   return <DeskContext.Provider value={api}>{children}</DeskContext.Provider>;
+}
+
+function browserMemory(): Pick<Storage, "getItem" | "setItem"> | null {
+  if (typeof localStorage === "undefined") return null;
+  return localStorage;
 }
 
 export function useDesk(): DeskApi {

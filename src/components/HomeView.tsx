@@ -1,11 +1,25 @@
+import { safeAllocate } from "../lib/allocation";
 import { prettyDate } from "../lib/dates";
 import { moneyAuto, pct, priceFmt } from "../lib/money";
+import { wholeBuy, wholeSell } from "../lib/wholeShares";
 import { useDesk, type TradeDraft } from "../state";
+import { useState } from "react";
 import type { BriefAction } from "../types";
 import { ChatPanel } from "./ChatPanel";
 
 export function HomeView() {
   const desk = useDesk();
+  const [amount, setAmount] = useState(String(desk.state.settings.capital));
+  const [amountError, setAmountError] = useState<string | null>(null);
+  const commitAmount = () => {
+    const plan = safeAllocate(Number(amount.replace(/,/g, "")), desk.state.settings.themeCount);
+    if (!plan.ok) {
+      setAmountError(plan.error);
+      return;
+    }
+    setAmountError(null);
+    desk.updateSettings({ capital: plan.allocation.capital });
+  };
   const { brief, performance, buckets } = desk.derived;
   const actions = [...brief.schedule, ...brief.engine.filter((action) => action.side !== "hold"), ...brief.reminders];
   const holds = brief.engine.filter((action) => action.side === "hold").length;
@@ -20,6 +34,14 @@ export function HomeView() {
         <h2 id="home-title">Now</h2>
         <p className="lede">What matters today. The rest of the desk is one step away. Not financial advice.</p>
       </header>
+      <form className="chat-form" onSubmit={(event) => { event.preventDefault(); commitAmount(); }}>
+        <label>
+          Amount to invest
+          <input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
+        </label>
+        <button type="submit" className="primary">Use this amount</button>
+        {amountError ? <p className="warn">{amountError}</p> : <p className="funding">Core, conviction, and dry powder scale from {moneyAuto(desk.state.settings.capital)}. Nothing is bought until you record a fill.</p>}
+      </form>
       <div className="home-grid">
         <article className="panel span-4">
           <div className="panel-mark" aria-hidden="true"><span className="shape square" /></div>
@@ -32,7 +54,7 @@ export function HomeView() {
                 <span className={`shape ${shapeFor(action.side)}`} aria-hidden="true" />
                 <span>
                   <strong>{label(action.side)} {action.ticker}</strong>
-                  <span className="funding"> {action.rule} · {action.title}{action.dollars ? ` · ${moneyAuto(action.dollars)}` : ""}</span>
+                  <span className="funding"> {action.rule} · {action.title}{shareLine(action, desk.prices?.quotes[action.ticker]?.price ?? null, heldShares(desk, action))}</span>
                   <span className="fine"> {action.reason}</span>
                 </span>
                 {action.record && action.dollars != null && action.dollars > 0 && (action.side === "buy" || action.side === "sell") ? (
@@ -98,6 +120,18 @@ function shapeFor(side: BriefAction["side"]): string {
   if (side === "sell") return "tri";
   if (side === "freeze") return "tri";
   return "circle";
+}
+
+function heldShares(desk: ReturnType<typeof useDesk>, action: BriefAction): number {
+  const lot = desk.derived.lots.find((item) => item.ticker.toUpperCase() === action.ticker.toUpperCase());
+  return lot?.shares ?? 0;
+}
+
+function shareLine(action: BriefAction, price: number | null, held: number): string {
+  if (action.side !== "buy" && action.side !== "sell") return action.dollars ? ` · ${moneyAuto(action.dollars)}` : "";
+  const sized = action.side === "buy" ? wholeBuy(action.dollars ?? 0, price) : wholeSell(action.dollars ?? 0, price, held);
+  if (!sized) return " · price unavailable, no whole-share order";
+  return ` · ${sized.shares} whole shares · ${moneyAuto(sized.dollars)} at ${priceFmt(sized.price)}`;
 }
 
 function label(side: BriefAction["side"]): string {

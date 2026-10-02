@@ -5,6 +5,7 @@ import { runEngine, type EngineAction, type EnginePosition } from "./engine";
 import { buyBlockedReason, classifyInstrument, isBenchmarkTicker } from "./instruments";
 import { cashBuckets, markBook, quoteFor, replayTrades, type CashBuckets, type MarkedBook, type PositionLot } from "./ledger";
 import { cents, pct } from "./money";
+import { applyConstraints, type ConstraintPatch } from "./boss";
 import { assessQuote, type DataBlock } from "./quotes";
 import { dueDeployment, scheduleRows, type ScheduleRow, type ThemeSchedule } from "./schedule";
 
@@ -29,7 +30,7 @@ export interface Derived {
   nextAnchor: BenchmarkAnchor;
 }
 
-export function deriveDesk(state: DeskState, prices: PriceBook | null, today: string, generatedAt = new Date().toISOString()): Derived {
+export function deriveDesk(state: DeskState, prices: PriceBook | null, today: string, generatedAt = new Date().toISOString(), constraints?: ConstraintPatch): Derived {
   const alloc = allocate(state.settings.capital, state.settings.themeCount);
   const buckets = cashBuckets(state.settings, state.theses, state.trades);
   const marks = markBook(state.settings, state.theses, state.trades, prices);
@@ -48,7 +49,7 @@ export function deriveDesk(state: DeskState, prices: PriceBook | null, today: st
     themes,
     metaRuleDone: state.reviews.metaRuleThrough != null && state.reviews.metaRuleThrough >= addMonths(state.settings.startDate, 12),
   });
-  const brief = assembleBrief({ state, prices, today, generatedAt, alloc, buckets, marks, lots, nextPeak, performance, themes });
+  const brief = assembleBrief({ state, prices, today, generatedAt, alloc, buckets, marks, lots, nextPeak, performance, themes, constraints });
   return { alloc, buckets, marks, lots, schedule, performance, brief, nextPeak, nextAnchor };
 }
 
@@ -132,6 +133,7 @@ function assembleBrief(input: {
   nextPeak: number;
   performance: Performance;
   themes: ThemeSchedule[];
+  constraints?: ConstraintPatch;
 }): Brief {
   const { state, today, marks, buckets, alloc, performance } = input;
   const fridaySweep = isFriday(today);
@@ -165,6 +167,9 @@ function assembleBrief(input: {
   });
 
   const engineBookPositions = enginePositions(state, input.lots, marks, buckets, alloc, input.prices, today);
+  const liveCap = input.constraints
+    ? applyConstraints([], input.constraints, state.rulebook.thresholds.positionCap).positionCap
+    : state.rulebook.thresholds.positionCap;
   const engine = runEngine({
     bookValue: marks.bookValue,
     peakValue: marks.complete ? input.nextPeak : null,
@@ -172,11 +177,20 @@ function assembleBrief(input: {
     fridaySweep,
     today,
     positions: engineBookPositions,
-    rules: state.rulebook.thresholds,
+    rules: { ...state.rulebook.thresholds, positionCap: liveCap },
   });
 
   const scheduled = engine.circuitBreaker ? schedulePlanned.map((action) => freezeScheduled(action, today)) : schedulePlanned;
-  const schedule = scheduled.map((action) => gateScheduledQuote(action, input.prices, today));
+  let schedule = scheduled.map((action) => gateScheduledQuote(action, input.prices, today));
+  let engineActions = engine.actions.map((action, index) => toBriefAction(action, today, index, engineBookPositions));
+  if (input.constraints) {
+    const themeOf = new Map(state.theses.map((thesis) => [thesis.ticker.trim().toUpperCase(), thesis.theme]));
+    const scheduleIds = new Set(schedule.map((action) => action.id));
+    const tagged = (actions: BriefAction[]) => actions.map((action) => ({ ...action, theme: themeOf.get(action.ticker.trim().toUpperCase()) }));
+    const filtered = applyConstraints([...tagged(schedule), ...tagged(engineActions)], input.constraints, liveCap).orders;
+    schedule = filtered.filter((action) => scheduleIds.has(action.id));
+    engineActions = filtered.filter((action) => !scheduleIds.has(action.id));
+  }
   const quotes = quoteStamps(state, input.prices, today);
 
   const reminders = dueReminders(state, today, performance);
@@ -211,7 +225,7 @@ function assembleBrief(input: {
     drawdown: engine.drawdown,
     dataGaps: unique(dataGaps),
     schedule,
-    engine: engine.actions.map((action, index) => toBriefAction(action, today, index, engineBookPositions)),
+    engine: engineActions,
     reminders,
     notes,
     quotes,

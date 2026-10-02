@@ -55,8 +55,10 @@ export function grounding(facts: ChatFacts): string {
 
 export function chatSystemPrompt(facts: ChatFacts): string {
   return [
+    "You are the Boss. You can see the desk. You still cannot place a trade, invent a price, or override an immutable rule.",
+    "If the user asks to change a rule, say it waits for the quarterly review. One change, with evidence, and not during a 10% drawdown.",
     playbookSummary(),
-    "Answer from the facts below. If a price is unavailable, say so. Never invent a price.",
+    "Answer from the facts below. If a price is unavailable, say price unavailable. Never invent a price.",
     "You may propose a ledger change or a thesis generation only inside a fenced json block tagged proposal. A proposal is not a write. The user must confirm it.",
     'Trade shape: {"kind":"trade","side":"buy"|"sell","ticker":"","dollars":0,"price":0,"sleeve":"conviction"|"core","note":""}.',
     'Thesis shape: {"kind":"generate-thesis"}. That only opens the generator. It does not approve a card.',
@@ -70,7 +72,7 @@ export function answerLocally(question: string, facts: ChatFacts): string | null
   const text = question.trim().toLowerCase();
   if (!text) return null;
   if (/api key|xai|grok key|passcode|how do i add/.test(text)) {
-    return "Settings holds the Grok connection. RSI server is the default: paste the passcode. It stays in this browser as rsi.llm, is not in an export, and is not written to the log. The other choice is your own xAI key from console.x.ai.";
+    return "You are signed in. Grok runs on the RSI server and this browser does not hold an xAI key or a passcode. Not financial advice.";
   }
   if (/what should i do|today|actions/.test(text)) {
     if (facts.actions.length === 0) return `Nothing is due on ${facts.today}. ${facts.fridaySweep ? "This is the Friday sweep." : "The Friday sweep is the full engine pass."} Not financial advice.`;

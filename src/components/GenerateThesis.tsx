@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { cardPrompt, gateGeneratedCard, redTeamPrompt, scoutPrompt, validateCard, validateRedTeam, validateScout, watchlistDocument, watchlistInstructions, extractJson, type CardDraft, type QuoteHint, type RedTeamDraft, type ScoutCandidate } from "../lib/generate";
 import { classifyInstrument } from "../lib/instruments";
-import { completeGrok, hasGrokCredential, loadLlmSettings } from "../lib/llm";
+import { completeGrok } from "../lib/llm";
 import { assessQuote } from "../lib/quotes";
 import { uid } from "../lib/id";
 import { useDesk } from "../state";
@@ -28,15 +28,10 @@ export function GenerateThesis() {
   const scout = async () => {
     setError(null);
     setSavedNote(null);
-    const settings = loadLlmSettings(typeof localStorage === "undefined" ? null : localStorage);
-    if (!hasGrokCredential(settings)) {
-      setError(settings.mode === "server" ? "Add the RSI server passcode in Settings. Scout does not run without it, and it never trades." : "Add an xAI API key in Settings. Scout does not run without it, and it never trades.");
-      return;
-    }
     setStep("scouting");
     try {
       const text = await completeGrok({
-        settings,
+        responseFormat: { type: "json_object" },
         messages: [
           { role: "system", content: "You output JSON only. You do not approve trades." },
           { role: "user", content: scoutPrompt(known) },
@@ -56,16 +51,10 @@ export function GenerateThesis() {
 
   const draft = async (candidate: ScoutCandidate) => {
     setError(null);
-    const settings = loadLlmSettings(typeof localStorage === "undefined" ? null : localStorage);
-    if (!hasGrokCredential(settings)) {
-      setError(settings.mode === "server" ? "Add the RSI server passcode in Settings. Nothing was saved." : "Add an xAI API key in Settings. Nothing was saved.");
-      setStep("pick");
-      return;
-    }
     setStep("drafting");
     try {
       const text = await completeGrok({
-        settings,
+        responseFormat: { type: "json_object" },
         messages: [
           { role: "system", content: "You output JSON only. The card is a draft. You do not approve it." },
           { role: "user", content: cardPrompt(candidate, desk.derived.alloc.positionCap, known.find((quote) => quote.ticker === candidate.ticker) ?? null) },
@@ -79,7 +68,7 @@ export function GenerateThesis() {
       setCard(parsed.card);
       setStep("redteam");
       const bearText = await completeGrok({
-        settings,
+        responseFormat: { type: "json_object" },
         messages: [
           { role: "system", content: "You are the red team. Output JSON only. Do not approve the thesis." },
           { role: "user", content: redTeamPrompt(parsed.card) },

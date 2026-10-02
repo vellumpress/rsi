@@ -29,13 +29,16 @@ for (const path of paths) {
   for (const [needle, reason] of banned) {
     if (text.includes(needle)) failures.push(`${path}: ${reason}`);
   }
+  if (!path.endsWith(".test.ts") && path.startsWith("src") && (text.includes("XAI_API_KEY") || text.includes("api.x.ai") || text.includes("x-rsi-passcode"))) {
+    failures.push(`${path}: the browser must not hold an xAI key or a passcode.`);
+  }
 }
 const html = await readFile("index.html", "utf8");
 if (!html.includes("Content-Security-Policy")) failures.push("index.html: missing Content-Security-Policy.");
 if (!html.includes("https://query1.finance.yahoo.com")) failures.push("index.html: CSP is missing the Yahoo connect source.");
 if (!html.includes("https://raw.githubusercontent.com")) failures.push("index.html: CSP is missing the snapshot connect source.");
-if (!html.includes("https://api.x.ai")) failures.push("index.html: CSP is missing the xAI connect source.");
 if (!html.includes("https://ojntnbaakfowmnrsetbb.supabase.co")) failures.push("index.html: CSP is missing the RSI server connect source.");
+if (html.includes("https://api.x.ai")) failures.push("index.html: the browser must not call xAI. The key stays on the server.");
 if (!html.includes("font-src 'self'")) failures.push("index.html: fonts must stay self-hosted.");
 
 if (failures.length) {
