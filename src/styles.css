@@ -223,6 +223,7 @@ th { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; font-w
 .history summary, .rules summary, .log summary { font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
 
 .chat { margin-top: 1.2rem; }
+main { display: grid; gap: 1rem; }
 .transcript { display: grid; gap: 0.7rem; margin: 0.8rem 0; }
 .bubble { border-top: 4px solid var(--ink); padding-top: 0.4rem; }
 .bubble.user { border-top-color: var(--blue); }

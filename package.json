@@ -11,7 +11,8 @@
     "e2e": "vitest run --config vitest.e2e.config.ts",
     "lint": "node scripts/lint.mjs",
     "typecheck": "tsc --noEmit",
-    "prices": "node scripts/fetch-prices.mjs"
+    "prices": "node scripts/fetch-prices.mjs",
+    "bundle:functions": "node scripts/bundle-functions.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.8",

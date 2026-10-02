@@ -55,7 +55,10 @@ describe("function gates", () => {
       expect(source).toContain("allowlist");
     }
     expect(chat.indexOf("allowlist")).toBeLessThan(chat.indexOf("api.x.ai"));
-    expect(onboard).not.toContain("api.x.ai");
+    expect(chat.indexOf("Today's plan")).toBeLessThan(chat.indexOf("api.x.ai"));
+    expect(onboard.indexOf("allowlist")).toBeLessThan(onboard.indexOf("api.x.ai"));
+    expect(onboard).toContain("rsi-onboard-plan-v1");
+    expect(onboard).not.toContain("Onboarding will not call Grok");
     expect(daily).not.toContain("api.x.ai");
     expect(daily).toContain("SUPABASE_SERVICE_ROLE_KEY");
     expect(chat).toContain("verify the signed-in user");
