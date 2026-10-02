@@ -1,0 +1,35 @@
+name: Daily prices
+
+on:
+  schedule:
+    # 22:30 UTC is after the US cash close in both EST and EDT.
+    - cron: "30 22 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prices
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - run: node scripts/fetch-prices.mjs
+      - name: Commit snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/prices.json
+          if git diff --staged --quiet; then
+            echo "Snapshot unchanged."
+          else
+            git commit -m "Update market snapshot"
+            git push
+          fi

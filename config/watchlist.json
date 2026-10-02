@@ -1,0 +1,4 @@
+{
+  "tickers": ["SPY", "QQQ"],
+  "note": "SPY and QQQ are benchmarks only. The weekday job always fetches them, and RSI never recommends buying or selling them. Add individual equities here before the snapshot can classify them as EQUITY and size a buy. This list is not a recommendation."
+}
