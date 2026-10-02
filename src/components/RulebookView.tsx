@@ -45,7 +45,7 @@ export function RulebookView() {
         onSubmit={(event) => {
           event.preventDefault();
           const reason = desk.changeRule({ parameter, next: Number(next), evidence });
-          setMessage(reason ?? `Rulebook is now ${desk.state.rulebook.version}. The next engine run uses the new value.`);
+          setMessage(reason ?? "Saved. The next engine run reads this threshold. The version on this page is the one the engine will use.");
         }}
       >
         <label>
