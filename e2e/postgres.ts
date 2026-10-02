@@ -1,9 +1,10 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 
 /**
  * Docker is not available in this environment, so `supabase start` cannot boot.
- * This is the same migration the project ships, on embedded Postgres, with the
+ * This applies the migrations the project ships, on embedded Postgres, with the
  * auth hooks a local Supabase stack would already have: auth.users, auth.uid,
  * auth.jwt, and the anon / authenticated / service_role / supabase_auth_admin roles.
  * service_role bypasses row security, matching the hosted project.
@@ -34,8 +35,11 @@ export async function bootRsiDatabase(): Promise<PGlite> {
     grant usage on schema public to anon, authenticated, service_role, supabase_auth_admin;
     grant usage on schema auth to anon, authenticated, service_role, supabase_auth_admin;
   `);
-  const migration = readFileSync("supabase/migrations/20261002203818_rsi_schema.sql", "utf8");
-  await db.exec(migration);
+  const dir = "supabase/migrations";
+  const files = readdirSync(dir).filter((name) => name.endsWith(".sql")).sort();
+  for (const name of files) {
+    await db.exec(readFileSync(join(dir, name), "utf8"));
+  }
   return db;
 }
 

@@ -1,0 +1,9 @@
+{
+  "core": ["AAPL", "MSFT", "GOOGL", "AMZN", "JPM", "JNJ", "XOM", "CAT"],
+  "themes": [
+    {"ticker": "NVDA", "theme": "semiconductors"},
+    {"ticker": "META", "theme": "software platforms"},
+    {"ticker": "COST", "theme": "retail"},
+    {"ticker": "UNH", "theme": "health plans"}
+  ]
+}

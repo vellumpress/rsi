@@ -20,13 +20,17 @@ The page-3 engine order is unchanged: circuit breaker first, then kill, greed or
 
 Rule edits lock when the marked book is down 10% or more from its peak, and when the book cannot be marked. A tick under the high is not treated as a drawdown: that would lock the rulebook on almost every day, so the quarterly change could not be used. Ten percent is a real drawdown, and it locks earlier than the 30% circuit breaker that freezes adds. Missing marks stay locked.
 
-## What it does
+## What the screen does
 
-- Split a funded amount into core 30%, conviction 45%, and dry powder 25%. Theme counts are 3, 4, or 5. One or two themes are capped at 15% of the book.
-- Walk a theme through the loop: scout, thesis card, red team, valuation band, then the entry third only. The scout ticker has to be one company. SPY and QQQ are refused.
-- Run the page-3 engine every day and mark Friday as the full sweep. Circuit breaker first. The first rule that fires is the action.
-- Keep a versioned rulebook. One threshold change per quarter. No threshold change in a 10% drawdown or while the book is unmarked. After four quarters, a conviction sleeve that trails QQQ can be shrunk into the core stock basket.
-- Store the desk in this browser. Export and import JSON. A backup is written before an import or a migration from an older Alpha Desk file. An imported `coreTicker` of SPY or QQQ is dropped.
+One screen. Sign in, enter how much to invest, and read today's orders.
+
+`rsi-onboard` stores the amount, fetches Yahoo prices for the starter universe in `src/lib/onboardPlan.ts` (AAPL, MSFT, GOOGL, AMZN, NVDA, META, JPM, JNJ, UNH, XOM, COST, CAT), and asks Grok (`grok-4.7`) to pick 8 core names and 3–5 themes from that list. The code rejects anything outside the list, then sizes the plan: 30% core, 45% conviction bought in thirds (only the first third today), 25% cash, 15% cap per name, whole shares. A stale, jumped, missing, or non-equity price stores nothing and the screen shows the error instead of orders. SPY and QQQ are not in the universe.
+
+The list is ticker, BUY or SELL, whole shares, reference price, dollar amount, and a one-line reason. **Mark as done** writes a fill. The app never places a trade.
+
+A Boss box under the list calls `rsi-chat`. The server loads the stored plan into the system message. The browser does not send the orders.
+
+The engine, scorecards, rulebook, and settings screens are not mounted. Their modules stay in the repo.
 
 ## Data
 
@@ -42,34 +46,35 @@ The desk is private. Sign up and sign in with email and password. Supabase Auth 
 
 Only addresses in `public.allowlist` can get past signup or spend credits. The table is seeded with `miketankh@gmail.com`. The before-user-created hook rejects every other signup. Row security lets a signed-in user read only their own allowlist row. `rsi-chat`, `rsi-onboard`, and `rsi-daily` check the list again and return `403` with "This RSI desk is private." before any model call. Someone who is not on the list sees that same sentence and cannot open the desk.
 
+`rsi-onboard` calls Grok only after that allowlist check, and only to pick names. Prices come from Yahoo. `rsi-daily` is still a placeholder and does not call xAI.
+
 Chat is with the Boss. The server prepends a system message the browser cannot override: no trades, no invented prices, no edits to an immutable rule. A request to change a rule is stored and the Boss says it waits for the quarterly review. Other feedback (an exclusion, pace, voice, risk) is tagged and dated in `user_feedback`. Constraints apply on the next engine run. Notes stay in `rsi.feedback`, not in the desk export.
 
 Chat and thesis generation call `rsi-chat` with the session. The function verifies the JWT, checks the allowlist, stores any feedback, then allows 12 calls a minute and 80 a day. The server holds `XAI_API_KEY` and calls `grok-4.7` (override with the `RSI_MODEL` secret). Pass `stream: true` for a server-sent reply. The browser never sees the key.
 
-`npm run e2e` reruns the whole loop. `supabase start` needs Docker, which this desk does not assume. The suite applies `supabase/migrations/20261002203818_rsi_schema.sql` on embedded Postgres with the auth hooks a local stack would provide, fetches real Yahoo charts for AAPL, MSFT, XOM, SPY, and QQQ, and time-travels a funded desk through Friday sweeps.
+`npm run e2e` applies every file in `supabase/migrations` on embedded Postgres (PGlite). Docker is not required, and `supabase start` is not what the suite runs. The plan test calls `runOnboard` with live Yahoo charts for the starter universe. Grok is a live `api.x.ai` call when `XAI_API_KEY` is set; otherwise the test uses the recorded JSON content in `e2e/fixtures/grok-starter-plan.json` at the `completeJson` boundary only. The older timeline test still fetches AAPL, MSFT, XOM, SPY, and QQQ.
 
 ## Deploy
 
 Project ref `ojntnbaakfowmnrsetbb`. Apply these in order. Do not run them against any other project.
 
-1. In the SQL editor, run `supabase/migrations/20261002203818_rsi_schema.sql`.
-2. Authentication → Hooks → Before user created → Postgres function `public.hook_before_user_created`. Enable it. `config.toml` records the same hook, but this project is updated from the dashboard, not `supabase config push`.
-3. Authentication → URL configuration. Site URL `https://vellumpress.github.io/rsi/`. Add that URL under redirect URLs.
-4. Confirm the secret `XAI_API_KEY` is set. Do not put it in the frontend. Optional secret `RSI_MODEL` (default `grok-4.7`). `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are already present in functions.
-5. Deploy each function as the single file `index.ts` (Management API multipart, metadata `entrypoint_path` `index.ts`):
-   - `rsi-chat` with `verify_jwt` true. File `supabase/functions/rsi-chat/index.ts`.
-   - `rsi-onboard` with `verify_jwt` true. File `supabase/functions/rsi-onboard/index.ts`.
-   - `rsi-daily` with `verify_jwt` false. File `supabase/functions/rsi-daily/index.ts`. It rejects any caller except the service role and skips accounts that are not on the allowlist. It does not call xAI.
-6. Delete the passcode function `rsi-grok`. It is not on the allowlist path and can still spend credits.
-7. Build the site with `VITE_SUPABASE_URL=https://ojntnbaakfowmnrsetbb.supabase.co` and `VITE_SUPABASE_ANON_KEY` set to the anon key. The anon key is safe in the frontend. The service role is not.
+1. `supabase/migrations/20261002203818_rsi_schema.sql` is already applied. Do not edit it and do not run it again.
+2. In the SQL editor, run `supabase/migrations/20261003000000_plan.sql`. That adds `public.profiles` and grants `service_role` delete on unfilled recommendations.
+3. Authentication → Hooks → Before user created → Postgres function `public.hook_before_user_created`. It should already be enabled. Leave it. Do not `supabase config push`.
+4. Authentication → URL configuration. Site URL `https://vellumpress.github.io/rsi/`. Add that URL under redirect URLs.
+5. Secret `XAI_API_KEY` (required for onboard and chat). Optional secret `RSI_MODEL` (default `grok-4.7`). `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are injected into functions. The service role is the `sb_secret_...` key, not a user JWT, and it is not committed.
+6. Deploy each function as the single file `index.ts` (Management API multipart, metadata `entrypoint_path` `index.ts`):
+   - `rsi-onboard` with `verify_jwt` true. File `supabase/functions/rsi-onboard/index.ts` (built by `npm run bundle:functions` from `entry.ts`).
+   - `rsi-chat` with `verify_jwt` true. File `supabase/functions/rsi-chat/index.ts`. Redeploy so the Boss reads today's plan.
+   - `rsi-daily` with `verify_jwt` false. File `supabase/functions/rsi-daily/index.ts`. Unchanged placeholder. It does not call xAI. No cron.
+7. Delete `rsi-grok` if it is still deployed.
+8. GitHub Pages builds with the committed `.env.production` anon key (`VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` only). Do not add `VITE_` secrets to the workflow. Do not put the service role in the workflow or in `.env.production`.
 
 ## Homepage and Grok
 
-The homepage shows today's actions, the Friday sweep, the month's scorecard, the book against its peak and against SPY and QQQ, and the newest thesis. Research, the ledger, the rulebook, and settings sit behind the nav.
+The signed-in page is the amount, today's orders, and the Boss. Grok on onboard returns names only. `rsi-chat` answers questions about the stored plan and still refuses trades, invented prices, and edits to an immutable rule.
 
-The chat can explain the book and propose a trade or a thesis. A proposal is not a write. Confirming a trade still runs the same caps, stocks-only check, and ledger guards.
-
-Generate thesis runs the page-2 scout, the page-5 card, and a separate red team, using the rule summary in `src/lib/playbookSummary.ts`. Output is JSON, ETFs are rejected, snapshot prices are not invented, and model figures are labeled "model-generated, verify". The saved card is a draft. Approving it is a later click on the research page, and that click still does not trade until you confirm an entry. A new ticker is not committed from the browser. Download `watchlist.json` or edit [config/watchlist.json](https://github.com/vellumpress/rsi/edit/main/config/watchlist.json). A monthly pitch on the brief is a prompt, not an automatic scout.
+The page-2 scout, thesis cards, the engine, and the rulebook remain in the codebase and in the unit tests. They are not on this screen.
 
 ## Develop
 

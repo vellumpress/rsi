@@ -6,6 +6,7 @@ type Phase = "loading" | "config" | "signed-out" | "private" | "desk";
 
 export interface AuthSession {
   email: string;
+  userId: string | null;
   signOut: () => Promise<void>;
 }
 
@@ -14,6 +15,7 @@ export function AuthGate({ children }: { children: (session: AuthSession) => Rea
   const preview = demo ? new URLSearchParams(window.location.search).get("screen") : null;
   const [phase, setPhase] = useState<Phase>(demo ? (preview === "desk" ? "desk" : preview === "private" ? "private" : "signed-out") : "loading");
   const [email, setEmail] = useState(demo && preview === "desk" ? "miketankh@gmail.com" : "");
+  const [userId, setUserId] = useState<string | null>(null);
   const [password, setPassword] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -27,25 +29,31 @@ export function AuthGate({ children }: { children: (session: AuthSession) => Rea
       return;
     }
     let cancel = false;
-    const look = async (userEmail: string | undefined) => {
+    const look = async (user: { email?: string | null; id?: string } | null | undefined) => {
+      const userEmail = user?.email ?? undefined;
       if (!userEmail) {
-        if (!cancel) setPhase("signed-out");
+        if (!cancel) {
+          setUserId(null);
+          setPhase("signed-out");
+        }
         return;
       }
       const { data, error } = await supabase.from("allowlist").select("email").limit(1);
       if (cancel) return;
       if (error) {
         setNote("Sign in again. The session could not be checked.");
+        setUserId(null);
         await supabase.auth.signOut();
         setPhase("signed-out");
         return;
       }
       setEmail(userEmail);
+      setUserId(user?.id ?? null);
       setPhase(data && data.length > 0 ? "desk" : "private");
     };
-    void supabase.auth.getSession().then(({ data }) => look(data.session?.user.email ?? undefined));
+    void supabase.auth.getSession().then(({ data }) => look(data.session?.user));
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
-      void look(session?.user.email ?? undefined);
+      void look(session?.user);
     });
     return () => {
       cancel = true;
@@ -56,6 +64,7 @@ export function AuthGate({ children }: { children: (session: AuthSession) => Rea
   const signOut = async () => {
     if (!demo) await getSupabase()?.auth.signOut();
     setEmail("");
+    setUserId(null);
     setPhase("signed-out");
   };
 
@@ -143,5 +152,5 @@ export function AuthGate({ children }: { children: (session: AuthSession) => Rea
     );
   }
 
-  return <>{children({ email, signOut })}</>;
+  return <>{children({ email, userId, signOut })}</>;
 }
