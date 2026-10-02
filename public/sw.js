@@ -1,4 +1,4 @@
-const CACHE = "rsi-v1";
+const CACHE = "rsi-v2";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());

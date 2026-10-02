@@ -36,6 +36,18 @@ The committed snapshot prices SPY and QQQ so the scorecard has benchmarks. Add a
 
 The price workflow only commits `public/prices.json`. It uses the default `GITHUB_TOKEN`, so that bot push does not start another workflow run and does not redeploy GitHub Pages. The client reads the raw snapshot so a new file can land without a Pages deploy. The next human push to `main` publishes the site itself. Pages is built with base path `/rsi/` and is served at https://vellumpress.github.io/rsi/.
 
+## Homepage and Grok
+
+The homepage shows today's actions, the Friday sweep, the month's scorecard, the book against its peak and against SPY and QQQ, and the newest thesis. Research, the ledger, the rulebook, and settings sit behind the nav.
+
+Chat uses your own xAI key. Create an account at [console.x.ai](https://console.x.ai), add credits, and create a key on the API Keys page. Paste it in Settings. It is stored in this browser under `rsi.llm`, it is not part of a desk export, and it is sent only to `https://api.x.ai`. The default model is `grok-4.7` (the chat model named in xAI's docs). The model id can be changed in Settings.
+
+`api.x.ai` answered a browser preflight from `https://vellumpress.github.io` with `Access-Control-Allow-Origin: *`, so the static site calls `POST /v1/chat/completions` directly. If xAI removes that header, the smallest fix is a proxy you deploy under your own account that forwards the body and does not log the key. This repo does not add a shared backend.
+
+The chat can explain the book and propose a trade or a thesis. A proposal is not a write. Confirming a trade still runs the same caps, stocks-only check, and ledger guards. With no key, a few questions ("what should I do today?") are answered from local state.
+
+Generate thesis runs the page-2 scout, the page-5 card, and a separate red team, using the rule summary in `src/lib/playbookSummary.ts`. Output is JSON, ETFs are rejected, snapshot prices are not invented, and model figures are labeled "model-generated, verify". The saved card is a draft. Approving it is a later click on the research page, and that click still does not trade until you confirm an entry. A new ticker is not committed from the browser. Download `watchlist.json` or edit [config/watchlist.json](https://github.com/vellumpress/rsi/edit/main/config/watchlist.json). A monthly pitch on the brief is a prompt, not an automatic scout.
+
 ## Develop
 
 ```bash

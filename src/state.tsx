@@ -9,7 +9,7 @@ import { safeAllocate } from "./lib/allocation";
 import { defaultState, importState, loadState, saveState, serializeState } from "./lib/storage";
 import type { BriefAction, DeskState, Postmortem, PriceBook, Scorecard, Settings, Thesis, Trade, TrancheTag } from "./types";
 
-type Tab = "brief" | "loop" | "capital" | "theses" | "ledger" | "rulebook" | "history";
+export type Tab = "brief" | "check" | "loop" | "capital" | "theses" | "ledger" | "rulebook" | "history";
 
 export interface TradeDraft {
   date: string;
@@ -366,4 +366,4 @@ export function useDesk(): DeskApi {
   return value;
 }
 
-export type { Tab, TrancheTag };
+export type { TrancheTag };

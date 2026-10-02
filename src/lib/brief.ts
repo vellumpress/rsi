@@ -472,6 +472,18 @@ function dueReminders(state: DeskState, today: string, performance: Performance)
   const actions: BriefAction[] = [];
   const months = elapsedMonthDates(state.settings.startDate, today, 1, 1);
   const latestMonth = months.at(-1);
+  if (latestMonth && !state.theses.some((thesis) => thesis.openedOn.startsWith(monthKey(latestMonth)))) {
+    actions.push({
+      id: `pitch:${monthKey(latestMonth)}`,
+      ticker: "DESK",
+      title: "Monthly scout",
+      side: "review",
+      dollars: null,
+      shares: null,
+      rule: "PITCH",
+      reason: `A monthly pitch is due for ${prettyDate(latestMonth)}. Generate or start a thesis. This is a prompt to you. It does not scout by itself, approve a card, or trade.`,
+    });
+  }
   if (latestMonth && state.reviews.scorecardThrough !== monthKey(latestMonth)) {
     const qqq = performance.qqqReturn;
     const spy = performance.spyReturn;

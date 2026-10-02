@@ -154,7 +154,8 @@ export type RuleCode =
   | "MILESTONE-DUE"
   | "DATA"
   | "FUND"
-  | "CORE";
+  | "CORE"
+  | "PITCH";
 
 export interface BriefAction {
   id: string;
