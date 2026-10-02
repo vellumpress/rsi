@@ -15,6 +15,8 @@ export function normalizeBook(value: unknown): PriceBook {
       currency: typeof quote?.currency === "string" ? quote.currency : null,
       bars: typeof quote?.bars === "number" ? quote.bars : 0,
       previousClose: typeof quote?.previousClose === "number" ? quote.previousClose : null,
+      instrumentType: typeof quote?.instrumentType === "string" ? quote.instrumentType : null,
+      quoteType: typeof quote?.quoteType === "string" ? quote.quoteType : null,
       source: typeof quote?.source === "string" ? quote.source : input.source || "snapshot",
       error: typeof quote?.error === "string" ? quote.error : undefined,
     };

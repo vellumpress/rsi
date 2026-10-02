@@ -1,5 +1,6 @@
 import type { BenchmarkAnchor, DeskState, Postmortem, Reviews, Scorecard, Settings, Thesis, Trade } from "../types";
-import { isThemeCount } from "./allocation";
+import { clampCoreSlots, DEFAULT_CORE_SLOTS, isThemeCount } from "./allocation";
+import { isBenchmarkTicker } from "./instruments";
 import { MAX_CAPITAL_DOLLARS } from "./cents";
 import { isValidISO, todayISO } from "./dates";
 import { defaultRulebook, sanitizeThresholds, type Rulebook } from "./rulebook";
@@ -31,7 +32,8 @@ export function defaultState(today = todayISO()): DeskState {
       capital: 100_000,
       startDate: today,
       themeCount: 3,
-      coreTicker: "SPY",
+      coreTickers: [],
+      coreSlots: DEFAULT_CORE_SLOTS,
     },
     theses: [],
     trades: [],
@@ -127,11 +129,15 @@ function normalizeSettings(value: unknown, fallback: Settings): Settings {
   }
   if (!input.startDate || !isValidISO(input.startDate)) throw new Error("The start date is not a calendar day.");
   if (typeof input.themeCount !== "number" || !isThemeCount(input.themeCount)) throw new Error("Conviction holds 3, 4, or 5 themes.");
+  const rawTickers = Array.isArray((input as { coreTickers?: unknown }).coreTickers) ? (input as { coreTickers: unknown[] }).coreTickers : [];
+  const coreTickers = [...new Set(rawTickers.map((ticker) => (typeof ticker === "string" ? ticker.trim().toUpperCase() : "")).filter((ticker) => /^[A-Z0-9.-]{1,12}$/.test(ticker) && !isBenchmarkTicker(ticker)))];
+  const slots = (input as { coreSlots?: unknown }).coreSlots;
   return {
     capital: input.capital,
     startDate: input.startDate,
     themeCount: input.themeCount,
-    coreTicker: input.coreTicker === "QQQ" ? "QQQ" : "SPY",
+    coreTickers,
+    coreSlots: typeof slots === "number" ? clampCoreSlots(slots) : DEFAULT_CORE_SLOTS,
   };
 }
 
@@ -153,7 +159,11 @@ function normalizeThesis(value: unknown, index: number): Thesis {
     whyWrong: stringOr(thesis.whyWrong, ""),
     killCondition: stringOr(thesis.killCondition, ""),
     killHit: thesis.killHit === true,
-    milestones: thesis.milestones.filter((item) => item && typeof item === "object") as Thesis["milestones"],
+    milestones: thesis.milestones.filter((item) => item && typeof item === "object").map((item) => {
+      const milestone = item as Thesis["milestones"][number];
+      const reported = milestone.reported === true || (milestone.reported == null && milestone.status === "hit");
+      return { ...milestone, reported };
+    }),
     valuationMetric: stringOr(thesis.valuationMetric, ""),
     addBelow: stringOr(thesis.addBelow, ""),
     trimAbove: stringOr(thesis.trimAbove, ""),

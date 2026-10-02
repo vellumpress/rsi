@@ -38,10 +38,11 @@ function Shell() {
           <p className="issue">{prettyDate(desk.today)}</p>
         </div>
         <p className="tagline">Recursive Self Investing</p>
-        <p className="tagline">Follows the Alpha Desk playbook. Suggestions only. Verify before trading.</p>
+        <p className="tagline">Follows the Alpha Desk playbook, with one deliberate change: individual stocks and cash only.</p>
       </header>
       <p className="disclaimer" role="note">
         <strong>Not financial advice.</strong> Verify before trading. RSI never places a trade and never connects to a brokerage.
+        The playbook's core index fund and T-bills are not used. Core is a basket of stocks you choose. Idle money is cash. SPY and QQQ are benchmarks and are never a buy or a sell.
       </p>
       <nav className="nav" aria-label="Desk">
         {TABS.map((tab) => (

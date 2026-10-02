@@ -47,6 +47,8 @@ describe("persistence", () => {
     const store = memory({ "alpha-desk.v1": JSON.stringify(legacy) });
     const desk = readDesk(store, "2026-10-02");
     expect(desk.version).toBe(2);
+    expect(desk.settings.coreTickers).toEqual([]);
+    expect(desk.settings.coreSlots).toBe(8);
     expect(desk.theses[0].stage).toBe("thesis");
     expect(desk.rulebook.version).toBe("1.0");
     expect(store.data["rsi.backup"]).toContain("\"version\":1");

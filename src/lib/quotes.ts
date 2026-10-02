@@ -1,4 +1,5 @@
 import { addDays, isValidISO, parseISO, weekdayUTC } from "./dates";
+import { isNyseHoliday } from "./holidays";
 
 /**
  * Playbook p.3 signals are computed only from a sane quote.
@@ -20,7 +21,7 @@ export interface QuoteCheck {
   message: string;
 }
 
-/** Weekdays strictly after `from` up to and including `today`. Weekends are not trading days. Holidays are not modeled. */
+/** Weekdays strictly after `from` up to and including `today`. Weekends and NYSE full closures are not trading days. */
 export function tradingDaysBetween(from: string, today: string): number | null {
   if (!isValidISO(from) || !isValidISO(today)) return null;
   if (today < from) return null;
@@ -29,7 +30,7 @@ export function tradingDaysBetween(from: string, today: string): number | null {
   while (cursor < today) {
     cursor = addDays(cursor, 1);
     const day = weekdayUTC(cursor);
-    if (day !== 0 && day !== 6) count += 1;
+    if (day !== 0 && day !== 6 && !isNyseHoliday(cursor)) count += 1;
   }
   return count;
 }

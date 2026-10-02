@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 
 const DAY = 86_400;
-const REQUIRED = ["SPY", "QQQ", "IGV"];
+const REQUIRED = ["SPY", "QQQ"];
 
 function nyDate(ms) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -22,6 +22,8 @@ function emptyQuote(ticker, error) {
     currency: null,
     bars: 0,
     previousClose: null,
+    instrumentType: null,
+    quoteType: null,
     source: "Yahoo Finance chart",
     error,
   };
@@ -62,6 +64,8 @@ function parseYahooChart(payload, fallbackTicker) {
     currency: meta.currency ?? null,
     bars: adjusted.length,
     previousClose,
+    instrumentType: typeof meta.instrumentType === "string" ? meta.instrumentType : null,
+    quoteType: typeof meta.quoteType === "string" ? meta.quoteType : null,
     source: "Yahoo Finance chart",
     ...(sma200 == null ? { error: "Fewer than 200 closes, so the 200-day average is withheld." } : {}),
   };

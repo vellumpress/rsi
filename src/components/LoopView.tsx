@@ -2,6 +2,7 @@ import { useState } from "react";
 import { themeTarget } from "../lib/allocation";
 import { prettyDate } from "../lib/dates";
 import { uid } from "../lib/id";
+import { buyBlockedReason, classifyInstrument } from "../lib/instruments";
 import { bandGate, bearGate, scoutGate, sizeTranche1, type Disbelief } from "../lib/loop";
 import { moneyAuto } from "../lib/money";
 import { assessQuote } from "../lib/quotes";
@@ -123,7 +124,7 @@ function ScoutAndThesis({ thesis }: { thesis: Thesis }) {
         <input value={trend} onChange={(event) => setTrend(event.target.value)} />
       </label>
       <label>
-        Ticker
+        Ticker of one company
         <input value={ticker} onChange={(event) => setTicker(event.target.value.toUpperCase())} />
       </label>
       <label>
@@ -254,6 +255,8 @@ function BandAndSize({ thesis }: { thesis: Thesis }) {
     desk.today,
   );
   const price = check.block === "ok" || check.block === "short" ? quote?.price ?? null : null;
+  const instrument = classifyInstrument({ ticker: thesis.ticker, instrumentType: quote?.instrumentType, quoteType: quote?.quoteType });
+  const equityBlock = buyBlockedReason(instrument);
   const target = themeTarget(desk.derived.alloc, thesis);
   const lot = desk.derived.lots.find((item) => item.thesisId === thesis.id);
   const earmarked = desk.derived.buckets.earmarked.find((row) => row.thesisId === thesis.id)?.dollars ?? 0;
@@ -306,11 +309,12 @@ function BandAndSize({ thesis }: { thesis: Thesis }) {
       </label>
       {message ? <p className="funding">{message}</p> : null}
       <button type="submit">Check the band</button>
+      {equityBlock ? <p className="warn">{equityBlock}</p> : null}
       {thesis.stage === "approved" && sized ? (
         <div className="action buy">
           <p>{sized.reason}</p>
-          <p>{sized.ok ? `Entry third ${moneyAuto(sized.dollars)} · ${sized.shares.toLocaleString("en-US")} shares. This is a suggestion. Confirm to write the ledger.` : sized.reason}</p>
-          {sized.ok ? (
+          <p>{sized.ok && !equityBlock ? `Entry third ${moneyAuto(sized.dollars)} · ${sized.shares.toLocaleString("en-US")} shares. This is a suggestion. Confirm to write the ledger.` : equityBlock ?? sized.reason}</p>
+          {sized.ok && !equityBlock ? (
             <button
               type="button"
               className="primary"
@@ -373,7 +377,7 @@ function blankScout(today: string): Thesis {
       id: uid(),
       metric: "",
       target: "",
-      byDate: today,
+      byDate: "",
       status: "pending" as const,
       resolvedOn: null,
     })),

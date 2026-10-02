@@ -59,6 +59,7 @@ export function fitBuy(input: {
     earmarkedSpent = 0;
     drySpent = order.costCents;
   }
+  if (earmarkedSpent > earmarkedCents || drySpent > dryCents) return empty("Insufficient data, no action.");
   return {
     ok: true,
     dollars: fromCents(order.costCents),
@@ -89,9 +90,10 @@ export function fitSell(input: {
   if (priceCents == null || desiredCents == null) return empty("Insufficient data, no action.");
   if (input.allowFullExit) {
     const cost = toCents(input.heldShares * input.price);
+    if (cost == null || cost <= 0) return empty("Insufficient data, no action.");
     return {
       ok: true,
-      dollars: fromCents(cost ?? 0),
+      dollars: fromCents(cost),
       shares: input.heldShares,
       reason: "Full exit. Share count is the position, not more.",
     };

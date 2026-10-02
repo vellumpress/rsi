@@ -1,4 +1,5 @@
 import { addDays } from "./dates";
+import { fundHoldReason, type InstrumentClass } from "./instruments";
 import { fitBuy, fitSell } from "./orders";
 import { defaultThresholds, type RuleThresholds } from "./rulebook";
 import type { DataBlock } from "./quotes";
@@ -21,6 +22,8 @@ export const BOTTOM_QUARTILE = defaultThresholds().bottomQuartile;
 export interface EngineMilestone {
   status: "pending" | "hit" | "missed";
   resolvedOn?: string | null;
+  /** Confirmation counts only when this is true: a reported number, not guidance. */
+  reported?: boolean;
 }
 
 export interface EnginePosition {
@@ -47,6 +50,8 @@ export interface EnginePosition {
   lastFearAddDate: string | null;
   /** Missing means the quote was accepted. stale/invalid/missing block every buy and sell. */
   dataBlock?: DataBlock;
+  /** Missing means equity, so older unit fixtures still run. A fund never becomes an order. */
+  instrument?: InstrumentClass;
 }
 
 export interface EngineBook {
@@ -125,6 +130,7 @@ function signalsOf(position: EnginePosition, bookValue: number | null, rules: Ru
   const confirmedSinceBuy = position.milestones.some(
     (milestone) =>
       milestone.status === "hit" &&
+      milestone.reported === true &&
       milestone.resolvedOn != null &&
       position.lastBuyDate != null &&
       milestone.resolvedOn > position.lastBuyDate,
@@ -174,6 +180,17 @@ export function runEngine(book: EngineBook): EngineResult {
     if (position.shares <= 0 && !position.killConditionHit) continue;
     const signals = signalsOf(position, book.bookValue, rules);
     const base = { positionId: position.id, ticker: position.ticker, signals, fromEarmarked: 0, fromDry: 0 };
+    if (position.instrument && position.instrument !== "equity") {
+      actions.push({
+        ...base,
+        rule: "HOLD",
+        side: "hold",
+        dollars: 0,
+        shares: null,
+        reason: fundHoldReason(position.instrument, position.ticker),
+      });
+      continue;
+    }
     const block = position.dataBlock ?? "ok";
     // Stale, invalid, or missing quotes cannot size a buy or a sell. p.3 is not run on invented prices.
     if (block === "stale" || block === "invalid" || block === "missing") {
@@ -216,8 +233,8 @@ export function runEngine(book: EngineBook): EngineResult {
           dollars: exit.dollars,
           shares: exit.shares,
           reason: position.killConditionHit
-            ? "Kill condition hit. Exit 100%. Cash goes to dry powder (T-bills). Post-mortem within 7 days."
-            : "Second milestone miss counts as a kill. Exit 100%. Cash goes to dry powder (T-bills). Post-mortem within 7 days.",
+            ? "Kill condition hit. Exit 100%. Cash goes to dry powder. Post-mortem within 7 days."
+            : "Second milestone miss counts as a kill. Exit 100%. Cash goes to dry powder. Post-mortem within 7 days.",
         });
       }
       continue;
@@ -363,12 +380,26 @@ function sizeAdd(
   rule: "R4" | "R5",
   rules: RuleThresholds,
 ): { action: Omit<EngineAction, "positionId" | "ticker" | "signals">; consumesDry: number } {
-  const fearExtra = rule === "R4" && position.tranche2Deployed;
+  if (rule === "R4" && position.tranche2Deployed && !position.tranche3Deployed) {
+    return {
+      consumesDry: 0,
+      action: {
+        rule: "HOLD",
+        side: "hold",
+        dollars: 0,
+        shares: null,
+        fromEarmarked: 0,
+        fromDry: 0,
+        reason: "Extreme fear, and tranche 2 is already invested. An extra add from cash waits until tranches 2 and 3 are both done. Hold and log the check.",
+      },
+    };
+  }
+  const fearExtra = rule === "R4" && position.tranche2Deployed && position.tranche3Deployed;
   const label =
     rule === "R5"
       ? "Confirmation tranche (tranche 3). Confirmation means reported numbers, not guidance."
       : fearExtra
-        ? "Extreme fear with the fear tranche already used. Add once from dry powder."
+        ? "Extreme fear with both later tranches already used. Add once from cash."
         : "Extreme fear with milestones intact. Buy the fear tranche (tranche 2).";
 
   if (!position.engineAdds) {
@@ -415,8 +446,8 @@ function sizeAdd(
           fromEarmarked: 0,
           fromDry: 0,
           reason: recent
-            ? "Extreme fear persists, but an extra dry-powder add was already taken in the last 7 days. Hold and log the check."
-            : "Extreme fear persists and the fear tranche is already invested. Extra dry-powder adds run on the Friday sweep only. Hold and log the check.",
+            ? "Extreme fear persists, but an extra cash add was already taken in the last 7 days. Hold and log the check."
+            : "Extreme fear persists and both later tranches are already invested. Extra cash adds run on the Friday sweep only. Hold and log the check.",
         },
       };
     }
@@ -449,10 +480,10 @@ function sizeAdd(
   }
   const funding =
     fit.fromEarmarked > 0 && fit.fromDry > 0
-      ? `Funded with ${fmt(fit.fromEarmarked)} of earmarked T-bills and ${fmt(fit.fromDry)} of dry powder.`
+      ? `Funded with ${fmt(fit.fromEarmarked)} of earmarked cash and ${fmt(fit.fromDry)} of dry powder.`
       : fit.fromEarmarked > 0
-        ? `Funded with ${fmt(fit.fromEarmarked)} of earmarked T-bills.`
-        : `Funded with ${fmt(fit.fromDry)} of dry powder.`;
+        ? `Funded with ${fmt(fit.fromEarmarked)} of earmarked cash.`
+        : `Funded with ${fmt(fit.fromDry)} of cash.`;
   return {
     consumesDry: fit.fromDry,
     action: {

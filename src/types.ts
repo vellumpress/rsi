@@ -15,6 +15,8 @@ export interface Milestone {
   byDate: string;
   status: MilestoneStatus;
   resolvedOn: string | null;
+  /** True only when the user marks a hit from reported numbers, not guidance. */
+  reported?: boolean;
 }
 
 export interface MonthlyLogEntry {
@@ -84,7 +86,10 @@ export interface Settings {
   /** YYYY-MM-DD. Week 0 of the deployment calendar. */
   startDate: string;
   themeCount: ThemeCount;
-  coreTicker: "SPY" | "QQQ";
+  /** User-chosen individual stocks. Empty until the user types them. Not a recommendation. */
+  coreTickers: string[];
+  /** Equal-weight slot count. Default 8. About 8–10 is the intended basket. */
+  coreSlots: number;
 }
 
 export interface Reviews {
@@ -116,6 +121,9 @@ export interface PriceQuote {
   bars: number;
   /** Prior session adjusted close. Not the 2-year chartPreviousClose. */
   previousClose: number | null;
+  /** Yahoo chart meta. EQUITY is the only type RSI will buy. */
+  instrumentType: string | null;
+  quoteType: string | null;
   source: string;
   error?: string;
 }
@@ -144,7 +152,9 @@ export type RuleCode =
   | "REBALANCE"
   | "METARULE"
   | "MILESTONE-DUE"
-  | "DATA";
+  | "DATA"
+  | "FUND"
+  | "CORE";
 
 export interface BriefAction {
   id: string;
@@ -191,6 +201,8 @@ export interface QuoteStamp {
   source: string;
   block: "ok" | "short" | "stale" | "invalid" | "missing";
   message: string;
+  /** Benchmarks are fetched for comparison and are never orders. */
+  role: "benchmark" | "holding";
 }
 
 export interface Scorecard {

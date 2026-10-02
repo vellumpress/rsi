@@ -233,22 +233,35 @@ describe("execution engine", () => {
     expect(result.actions[0].fromDry).toBe(3_000);
   });
 
-  it("adds from dry powder on a later fear signal, and only on Friday", () => {
+  it("does not add from cash on fear until both later tranches are done", () => {
+    const early = runEngine(book([position({ ...fear, tranche2Deployed: true, tranche3Deployed: false })]));
+    expect(early.actions[0].rule).toBe("HOLD");
+    expect(early.actions[0].side).toBe("hold");
+    expect(early.actions[0].dollars).toBe(0);
+  });
+
+  it("adds from cash on a later fear signal only after both tranches, and only on Friday", () => {
     const friday = runEngine(
-      book([position({ ...fear, tranche2Deployed: true, earmarkedCash: 0, lastFearAddDate: null })], { dryPowder: 9_000 }),
+      book(
+        [position({ ...fear, tranche2Deployed: true, tranche3Deployed: true, earmarkedCash: 0, lastFearAddDate: null })],
+        { dryPowder: 9_000 },
+      ),
     );
     expect(friday.actions[0].rule).toBe("R4");
     expect(friday.actions[0].fromEarmarked).toBe(0);
     expect(friday.actions[0].fromDry).toBe(5_000);
 
     const weekday = runEngine(
-      book([position({ ...fear, tranche2Deployed: true })], { fridaySweep: false, today: "2026-10-08" }),
+      book([position({ ...fear, tranche2Deployed: true, tranche3Deployed: true })], { fridaySweep: false, today: "2026-10-08" }),
     );
     expect(weekday.actions[0].rule).toBe("HOLD");
     expect(weekday.actions[0].reason).toMatch(/Friday/i);
 
     const recent = runEngine(
-      book([position({ ...fear, tranche2Deployed: true, lastFearAddDate: "2026-10-06" })], { today: "2026-10-09" }),
+      book(
+        [position({ ...fear, tranche2Deployed: true, tranche3Deployed: true, lastFearAddDate: "2026-10-06" })],
+        { today: "2026-10-09" },
+      ),
     );
     expect(recent.actions[0].rule).toBe("HOLD");
     expect(recent.actions[0].reason).toMatch(/7 days/i);
@@ -279,7 +292,7 @@ describe("execution engine", () => {
         position({
           lastBuyDate: "2026-10-02",
           milestones: [
-            { status: "hit", resolvedOn: "2026-10-08" },
+            { status: "hit", resolvedOn: "2026-10-08", reported: true },
             { status: "pending", resolvedOn: null },
             { status: "pending", resolvedOn: null },
           ],
@@ -295,7 +308,7 @@ describe("execution engine", () => {
         position({
           lastBuyDate: "2026-10-02",
           milestones: [
-            { status: "hit", resolvedOn: "2026-10-02" },
+            { status: "hit", resolvedOn: "2026-10-02", reported: true },
             { status: "pending", resolvedOn: null },
             { status: "pending", resolvedOn: null },
           ],
@@ -309,7 +322,7 @@ describe("execution engine", () => {
         position({
           tranche3Deployed: true,
           milestones: [
-            { status: "hit", resolvedOn: "2026-10-08" },
+            { status: "hit", resolvedOn: "2026-10-08", reported: true },
             { status: "pending", resolvedOn: null },
             { status: "pending", resolvedOn: null },
           ],
@@ -325,7 +338,7 @@ describe("execution engine", () => {
         position({
           ...fear,
           milestones: [
-            { status: "hit", resolvedOn: "2026-10-08" },
+            { status: "hit", resolvedOn: "2026-10-08", reported: true },
             { status: "pending", resolvedOn: null },
             { status: "pending", resolvedOn: null },
           ],
@@ -365,7 +378,7 @@ describe("execution engine", () => {
         [
           position({
             milestones: [
-              { status: "hit", resolvedOn: "2026-10-08" },
+              { status: "hit", resolvedOn: "2026-10-08", reported: true },
               { status: "pending", resolvedOn: null },
               { status: "pending", resolvedOn: null },
             ],

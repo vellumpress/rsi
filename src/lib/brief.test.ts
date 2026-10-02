@@ -8,7 +8,7 @@ function thesis(over: Partial<Thesis> = {}): Thesis {
   return {
     id: "soft",
     theme: "Software disbelief",
-    ticker: "IGV",
+    ticker: "CRM",
     openedOn: "2026-10-02",
     version: 1,
     marketBelief: "Software is a broken sector.",
@@ -45,10 +45,23 @@ function prices(quotes: Record<string, { price: number; sma200: number; high52w:
     fetchedAt: "2026-10-02T20:00:00.000Z",
     source: "test",
     quotes: Object.fromEntries(
-      Object.entries(quotes).map(([ticker, quote]) => [
-        ticker,
-        { ticker, ...quote, asOf: "2026-10-02", currency: "USD", bars: 220, previousClose: quote.price, source: "test" },
-      ]),
+      Object.entries(quotes).map(([ticker, quote]) => {
+        const fund = ticker === "SPY" || ticker === "QQQ" || ticker === "IGV";
+        return [
+          ticker,
+          {
+            ticker,
+            ...quote,
+            asOf: "2026-10-02",
+            currency: "USD",
+            bars: 220,
+            previousClose: quote.price,
+            instrumentType: fund ? "ETF" : "EQUITY",
+            quoteType: fund ? "ETF" : "EQUITY",
+            source: "test",
+          },
+        ];
+      }),
     ),
   };
 }
@@ -56,8 +69,17 @@ function prices(quotes: Record<string, { price: number; sma200: number; high52w:
 describe("daily brief", () => {
   it("schedules week-0 deployment on the start date and scales the dollars", () => {
     const state = defaultState("2026-10-02");
+    state.settings.coreTickers = ["AAA", "BBB"];
+    state.settings.coreSlots = 2;
     state.theses = [thesis()];
-    const full = deriveDesk(state, prices({ SPY: { price: 700, sma200: 650, high52w: 710 }, IGV: { price: 90, sma200: 100, high52w: 120 }, QQQ: { price: 600, sma200: 560, high52w: 610 } }), "2026-10-02", "2026-10-02T12:00:00.000Z");
+    const quoteBook = prices({
+      SPY: { price: 700, sma200: 650, high52w: 710 },
+      QQQ: { price: 600, sma200: 560, high52w: 610 },
+      AAA: { price: 100, sma200: 90, high52w: 110 },
+      BBB: { price: 80, sma200: 70, high52w: 90 },
+      CRM: { price: 90, sma200: 100, high52w: 120 },
+    });
+    const full = deriveDesk(state, quoteBook, "2026-10-02", "2026-10-02T12:00:00.000Z");
     expect(full.brief.fridaySweep).toBe(true);
     expect(full.brief.circuitBreaker).toBe(false);
     expect(full.brief.bookValue).toBe(100_000);
@@ -70,23 +92,72 @@ describe("daily brief", () => {
     ]);
     const buys = full.brief.schedule.filter((action) => action.side === "buy");
     expect(buys.map((action) => [action.ticker, action.dollars, action.rule])).toEqual([
-      ["SPY", 10_000, "WEEK0"],
-      ["IGV", 5_000, "WEEK0"],
+      ["AAA", 5_000, "WEEK0"],
+      ["BBB", 5_000, "WEEK0"],
+      ["CRM", 5_000, "WEEK0"],
     ]);
+    expect(buys.some((action) => action.ticker === "SPY" || action.ticker === "QQQ")).toBe(false);
 
     const half = defaultState("2026-10-02");
     half.settings.capital = 50_000;
+    half.settings.coreTickers = ["AAA", "BBB"];
+    half.settings.coreSlots = 2;
     half.theses = [thesis()];
-    const scaled = deriveDesk(
-      half,
-      prices({ SPY: { price: 700, sma200: 650, high52w: 710 }, IGV: { price: 90, sma200: 100, high52w: 120 }, QQQ: { price: 600, sma200: 560, high52w: 610 } }),
+    const scaled = deriveDesk(half, quoteBook, "2026-10-02", "2026-10-02T12:00:00.000Z");
+    expect(scaled.brief.schedule.filter((action) => action.side === "buy").map((action) => action.dollars)).toEqual([2_500, 2_500, 2_500]);
+    expect(full.brief.notes[0]).toMatch(/Not financial advice/);
+    expect(full.brief.notes[0]).toMatch(/Verify before trading/);
+    expect(full.brief.quotes.find((quote) => quote.ticker === "CRM")).toMatchObject({ asOf: "2026-10-02", block: "ok", source: "test", role: "holding" });
+    expect(full.brief.quotes.find((quote) => quote.ticker === "SPY")?.role).toBe("benchmark");
+  });
+
+  it("asks for core names and never buys a benchmark when the basket is empty", () => {
+    const state = defaultState("2026-10-02");
+    const derived = deriveDesk(
+      state,
+      prices({ SPY: { price: 700, sma200: 650, high52w: 710 }, QQQ: { price: 600, sma200: 560, high52w: 610 } }),
       "2026-10-02",
       "2026-10-02T12:00:00.000Z",
     );
-    expect(scaled.brief.schedule.filter((action) => action.side === "buy").map((action) => action.dollars)).toEqual([5_000, 2_500]);
-    expect(full.brief.notes[0]).toMatch(/Not financial advice/);
-    expect(full.brief.notes[0]).toMatch(/Verify before trading/);
-    expect(full.brief.quotes.find((quote) => quote.ticker === "IGV")).toMatchObject({ asOf: "2026-10-02", block: "ok", source: "test" });
+    expect(derived.brief.schedule.some((action) => action.rule === "CORE" && action.side === "review")).toBe(true);
+    const orders = [...derived.brief.schedule, ...derived.brief.engine].filter((action) => action.side === "buy" || action.side === "sell");
+    expect(orders).toHaveLength(0);
+  });
+
+  it("never emits a buy or a sell for an ETF", () => {
+    const state = defaultState("2026-10-02");
+    state.settings.coreTickers = ["IGV"];
+    state.settings.coreSlots = 1;
+    state.theses = [thesis({ ticker: "IGV" })];
+    state.trades = [
+      {
+        id: "t",
+        date: "2026-10-02",
+        ticker: "IGV",
+        side: "buy",
+        dollars: 5_000,
+        shares: 50,
+        price: 100,
+        sleeve: "conviction",
+        thesisId: "soft",
+        tranche: 1,
+        note: "",
+      },
+    ];
+    const derived = deriveDesk(
+      state,
+      prices({
+        SPY: { price: 700, sma200: 650, high52w: 710 },
+        QQQ: { price: 600, sma200: 560, high52w: 610 },
+        IGV: { price: 90, sma200: 40, high52w: 120 },
+      }),
+      "2026-10-02",
+      "2026-10-02T12:00:00.000Z",
+    );
+    const orders = [...derived.brief.schedule, ...derived.brief.engine].filter((action) => action.side === "buy" || action.side === "sell");
+    expect(orders).toHaveLength(0);
+    expect(derived.brief.schedule.some((action) => action.rule === "FUND")).toBe(true);
+    expect(derived.brief.engine.find((action) => action.ticker === "IGV")?.side).toBe("hold");
   });
 
   it("does not deploy before the start date", () => {
@@ -104,7 +175,7 @@ describe("daily brief", () => {
     const buy: Trade = {
       id: "t",
       date: "2026-10-02",
-      ticker: "IGV",
+      ticker: "CRM",
       side: "buy",
       dollars: 50_000,
       shares: 500,
@@ -119,7 +190,7 @@ describe("daily brief", () => {
       state,
       prices({
         SPY: { price: 700, sma200: 650, high52w: 710 },
-        IGV: { price: 40, sma200: 30, high52w: 100 },
+        CRM: { price: 40, sma200: 30, high52w: 100 },
         QQQ: { price: 600, sma200: 560, high52w: 610 },
       }),
       "2026-10-02",
@@ -159,7 +230,7 @@ describe("daily brief", () => {
       {
         id: "t",
         date: "2026-10-02",
-        ticker: "IGV",
+        ticker: "CRM",
         side: "buy",
         dollars: 5_000,
         shares: 50,
@@ -172,11 +243,11 @@ describe("daily brief", () => {
     ];
     const derived = deriveDesk(state, prices({ SPY: { price: 700, sma200: 650, high52w: 710 } }), "2026-10-02", "2026-10-02T12:00:00.000Z");
     expect(derived.marks.bookValue).toBeNull();
-    expect(derived.brief.dataGaps.join(" ")).toMatch(/IGV/);
+    expect(derived.brief.dataGaps.join(" ")).toMatch(/CRM/);
     expect(derived.brief.circuitBreakerEvaluated).toBe(false);
     expect(derived.brief.engine.some((action) => action.dollars === null && action.side === "sell")).toBe(false);
-    expect(derived.brief.schedule.some((action) => action.ticker === "IGV" && action.side === "buy")).toBe(false);
-    expect(derived.brief.engine.find((action) => action.ticker === "IGV")?.dollars).toBe(0);
+    expect(derived.brief.schedule.some((action) => action.ticker === "CRM" && action.side === "buy")).toBe(false);
+    expect(derived.brief.engine.find((action) => action.ticker === "CRM")?.dollars).toBe(0);
   });
 
   it("does not size a buy or a sell from a stale quote, and skips a theme that has not passed the gates", () => {
@@ -186,7 +257,7 @@ describe("daily brief", () => {
       {
         id: "t",
         date: "2026-09-01",
-        ticker: "IGV",
+        ticker: "CRM",
         side: "buy",
         dollars: 8_000,
         shares: 80,
@@ -199,16 +270,16 @@ describe("daily brief", () => {
     ];
     const book = prices({
       SPY: { price: 700, sma200: 650, high52w: 710 },
-      IGV: { price: 200, sma200: 100, high52w: 210 },
+      CRM: { price: 200, sma200: 100, high52w: 210 },
       QQQ: { price: 600, sma200: 560, high52w: 610 },
     });
-    book.quotes.IGV.asOf = "2026-09-28";
+    book.quotes.CRM.asOf = "2026-09-28";
     book.quotes.SPY.asOf = "2026-09-28";
     const derived = deriveDesk(state, book, "2026-10-02", "2026-10-02T12:00:00.000Z");
     expect(derived.brief.schedule.filter((action) => action.side === "buy")).toHaveLength(0);
     expect(derived.brief.schedule.every((action) => action.rule === "DATA" || action.side !== "buy")).toBe(true);
-    expect(derived.brief.engine.find((action) => action.ticker === "IGV")?.dollars).toBe(0);
-    expect(derived.brief.engine.find((action) => action.ticker === "IGV")?.reason).toMatch(/Insufficient data, no action/);
+    expect(derived.brief.engine.find((action) => action.ticker === "CRM")?.dollars).toBe(0);
+    expect(derived.brief.engine.find((action) => action.ticker === "CRM")?.reason).toMatch(/Insufficient data, no action/);
     expect(derived.brief.schedule.some((action) => action.ticker === "MU")).toBe(false);
     const stamp = derived.brief.quotes.find((quote) => quote.ticker === "SPY");
     expect(stamp?.block).toBe("stale");
@@ -223,7 +294,7 @@ describe("daily brief", () => {
       {
         id: "t",
         date: "2026-09-01",
-        ticker: "IGV",
+        ticker: "CRM",
         side: "buy",
         dollars: 8_000,
         shares: 160,
@@ -236,7 +307,7 @@ describe("daily brief", () => {
     ];
     const derived = deriveDesk(
       state,
-      prices({ SPY: { price: 700, sma200: 650, high52w: 710 }, IGV: { price: 50, sma200: 48, high52w: 80 }, QQQ: { price: 600, sma200: 560, high52w: 610 } }),
+      prices({ SPY: { price: 700, sma200: 650, high52w: 710 }, CRM: { price: 50, sma200: 48, high52w: 80 }, QQQ: { price: 600, sma200: 560, high52w: 610 } }),
       "2026-10-02",
       "2026-10-02T12:00:00.000Z",
     );

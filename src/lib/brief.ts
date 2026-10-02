@@ -2,6 +2,7 @@ import type { BenchmarkAnchor, Brief, BriefAction, DeskState, PriceBook, QuoteSt
 import { allocate, themeTarget, type Allocation } from "./allocation";
 import { addMonths, elapsedMonthDates, isFriday, monthKey, prettyDate } from "./dates";
 import { runEngine, type EngineAction, type EnginePosition } from "./engine";
+import { buyBlockedReason, classifyInstrument, isBenchmarkTicker } from "./instruments";
 import { cashBuckets, markBook, quoteFor, replayTrades, type CashBuckets, type MarkedBook, type PositionLot } from "./ledger";
 import { cents, pct } from "./money";
 import { assessQuote, type DataBlock } from "./quotes";
@@ -32,7 +33,7 @@ export function deriveDesk(state: DeskState, prices: PriceBook | null, today: st
   const alloc = allocate(state.settings.capital, state.settings.themeCount);
   const buckets = cashBuckets(state.settings, state.theses, state.trades);
   const marks = markBook(state.settings, state.theses, state.trades, prices);
-  const lots = replayTrades(state.trades, state.settings.coreTicker);
+  const lots = replayTrades(state.trades);
   const nextAnchor = mergeAnchor(state.benchmarkAnchor, prices, today);
   const nextPeak = Math.max(state.peakBook ?? state.settings.capital, state.settings.capital, marks.bookValue ?? 0);
   const performance = scorePerformance(state, alloc, buckets, marks, nextAnchor, prices);
@@ -40,7 +41,9 @@ export function deriveDesk(state: DeskState, prices: PriceBook | null, today: st
   const schedule = scheduleRows({
     startDate: state.settings.startDate,
     today,
-    coreTranche: alloc.coreTranche,
+    alloc,
+    coreTickers: state.settings.coreTickers,
+    coreSlots: state.settings.coreSlots,
     coreBought: coreBought(state),
     themes,
     metaRuleDone: state.reviews.metaRuleThrough != null && state.reviews.metaRuleThrough >= addMonths(state.settings.startDate, 12),
@@ -51,6 +54,16 @@ export function deriveDesk(state: DeskState, prices: PriceBook | null, today: st
 
 function coreBought(state: DeskState): number {
   return state.trades.filter((trade) => trade.sleeve === "core" && trade.side === "buy").reduce((sum, trade) => sum + trade.dollars, 0);
+}
+
+function coreBuysByTicker(state: DeskState): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const trade of state.trades) {
+    if (trade.sleeve !== "core" || trade.side !== "buy") continue;
+    const ticker = trade.ticker.trim().toUpperCase();
+    out[ticker] = (out[ticker] ?? 0) + trade.dollars;
+  }
+  return out;
 }
 
 function themeSchedules(state: DeskState, alloc: Allocation, lots: PositionLot[]): ThemeSchedule[] {
@@ -144,9 +157,10 @@ function assembleBrief(input: {
   const schedulePlanned = dueDeployment({
     startDate: state.settings.startDate,
     today,
-    coreTicker: state.settings.coreTicker,
-    coreTranche: alloc.coreTranche,
-    coreBought: coreBought(state),
+    coreTickers: state.settings.coreTickers,
+    coreSlots: state.settings.coreSlots,
+    alloc,
+    coreBoughtByTicker: coreBuysByTicker(state),
     themes: input.themes,
   });
 
@@ -176,7 +190,7 @@ function assembleBrief(input: {
   );
   notes.unshift("Not financial advice. Verify before trading. These rows are suggestions. RSI does not place trades or connect to a brokerage.");
   if (schedule.some((action) => action.side === "buy")) {
-    notes.push("Scheduled dollars are the deployment plan. Unspent theme thirds and dry powder stay in T-bills. T-bill yield is not accrued here; cash is carried at par.");
+    notes.push("Scheduled dollars are the deployment plan. Unspent theme thirds and dry powder stay in cash. Cash is carried at par. It is not invested in T-bills.");
   }
   if (buckets.overAllocated) {
     notes.push("Cash reservations exceed the cash on hand. Lower a theme target or record the trades you have already made before adding.");
@@ -223,7 +237,7 @@ function enginePositions(
     if (lot.shares <= 0 && thesis && !thesis.killHit && thesis.milestones.filter((m) => m.status === "missed").length < 2) {
       continue;
     }
-    positions.push(toEnginePosition(lot, mark, thesis, buckets, alloc, state, prices, today));
+    positions.push(toEnginePosition(lot, mark, thesis, buckets, alloc, prices, today));
   }
 
   for (const thesis of state.theses) {
@@ -250,7 +264,6 @@ function enginePositions(
         thesis,
         buckets,
         alloc,
-        state,
         prices,
         today,
       ),
@@ -271,7 +284,6 @@ function toEnginePosition(
   thesis: Thesis | undefined,
   buckets: CashBuckets,
   alloc: Allocation,
-  state: DeskState,
   prices: PriceBook | null,
   today: string,
 ): EnginePosition {
@@ -279,7 +291,7 @@ function toEnginePosition(
   const earmarked = thesis ? (buckets.earmarked.find((row) => row.thesisId === thesis.id)?.dollars ?? 0) : 0;
   return {
     id: lot.id,
-    ticker: (mark?.ticker || lot.ticker || state.settings.coreTicker).toUpperCase(),
+    ticker: (mark?.ticker || lot.ticker).toUpperCase(),
     sleeve: lot.sleeve,
     engineAdds: lot.sleeve === "conviction" && Boolean(thesis) && !thesis?.archived,
     shares: lot.shares,
@@ -289,7 +301,11 @@ function toEnginePosition(
     high52w: mark?.high52w ?? null,
     valuationPercentile: thesis?.valuationPercentile ?? null,
     killConditionHit: thesis?.killHit ?? false,
-    milestones: (thesis?.milestones ?? []).map((milestone) => ({ status: milestone.status, resolvedOn: milestone.resolvedOn })),
+    milestones: (thesis?.milestones ?? []).map((milestone) => ({
+      status: milestone.status,
+      resolvedOn: milestone.resolvedOn,
+      reported: milestone.reported === true,
+    })),
     lastBuyDate: lot.lastBuyDate,
     tranche1Deployed: lot.tranche1,
     tranche2Deployed: lot.tranche2,
@@ -298,6 +314,7 @@ function toEnginePosition(
     earmarkedCash: earmarked,
     lastFearAddDate: lot.lastFearAddDate,
     dataBlock: blockFor(prices, (mark?.ticker || lot.ticker || "").toUpperCase(), today),
+    instrument: instrumentFor(prices, (mark?.ticker || lot.ticker || "").toUpperCase()),
   };
 }
 
@@ -311,8 +328,38 @@ function blockFor(prices: PriceBook | null, ticker: string, today: string): Data
   ).block;
 }
 
+function instrumentFor(prices: PriceBook | null, ticker: string) {
+  const quote = quoteFor(prices, ticker);
+  return classifyInstrument({ ticker, instrumentType: quote?.instrumentType, quoteType: quote?.quoteType });
+}
+
 function gateScheduledQuote(action: BriefAction, prices: PriceBook | null, today: string): BriefAction {
   if (action.side !== "buy") return action;
+  if (isBenchmarkTicker(action.ticker)) {
+    return {
+      ...action,
+      side: "freeze",
+      dollars: 0,
+      shares: null,
+      rule: "FUND",
+      funding: undefined,
+      record: undefined,
+      reason: "SPY and QQQ are benchmarks. They are never a buy or a sell.",
+    };
+  }
+  const blocked = buyBlockedReason(instrumentFor(prices, action.ticker));
+  if (blocked) {
+    return {
+      ...action,
+      side: "freeze",
+      dollars: 0,
+      shares: null,
+      rule: "FUND",
+      funding: undefined,
+      record: undefined,
+      reason: `${blocked} The scheduled buy is not sized.`,
+    };
+  }
   const check = assessQuote(
     (() => {
       const quote = quoteFor(prices, action.ticker);
@@ -335,7 +382,7 @@ function gateScheduledQuote(action: BriefAction, prices: PriceBook | null, today
 }
 
 function quoteStamps(state: DeskState, prices: PriceBook | null, today: string): QuoteStamp[] {
-  const tickers = new Set<string>(["SPY", "QQQ", state.settings.coreTicker]);
+  const tickers = new Set<string>(["SPY", "QQQ", ...state.settings.coreTickers]);
   for (const thesis of state.theses) {
     const ticker = thesis.ticker.trim().toUpperCase();
     if (ticker) tickers.add(ticker);
@@ -357,6 +404,7 @@ function quoteStamps(state: DeskState, prices: PriceBook | null, today: string):
       source: quote?.source ?? prices?.source ?? "none",
       block: check.block,
       message: check.message,
+      role: isBenchmarkTicker(ticker) ? "benchmark" : "holding",
     };
   });
 }
@@ -388,7 +436,7 @@ function toBriefAction(action: EngineAction, today: string, index: number, posit
     HOLD: "Hold · check logged",
   };
   let funding: string | undefined;
-  if (action.side === "sell") funding = "Proceeds go to dry powder (T-bills).";
+  if (action.side === "sell") funding = "Proceeds go to cash (dry powder).";
   if (action.side === "buy") {
     const parts = [];
     if (action.fromEarmarked > 0) parts.push(`${cents(action.fromEarmarked).toLocaleString("en-US", { style: "currency", currency: "USD" })} earmarked`);
@@ -436,7 +484,7 @@ function dueReminders(state: DeskState, today: string, performance: Performance)
       dollars: null,
       shares: null,
       rule: "SCORECARD",
-      reason: `Scorecard for ${prettyDate(latestMonth)}. Mark each milestone hit or missed, write down P(thesis) so calibration can be scored later, and compare returns. Book ${pct(book)} since funding. SPY ${pct(spy)} since the first recorded snapshot. Themes are judged against QQQ ${pct(qqq)}. The loop does not skip this step.`,
+      reason: `Scorecard for ${prettyDate(latestMonth)}. Mark each milestone hit or missed, write down P(thesis) so calibration can be scored later, and compare returns. Book ${pct(book)} since funding. SPY ${pct(spy)} is the whole-book benchmark. Themes are judged against QQQ ${pct(qqq)}. Neither benchmark is a buy or a sell. The loop does not skip this step.`,
     });
   }
 
@@ -460,13 +508,13 @@ function dueReminders(state: DeskState, today: string, performance: Performance)
   if (latestYear && (state.reviews.rebalanceThrough == null || state.reviews.rebalanceThrough < latestYear)) {
     actions.push({
       id: `rebalance:${latestYear}`,
-      ticker: state.settings.coreTicker,
+      ticker: "CORE",
       title: "Yearly core rebalance",
       side: "review",
       dollars: null,
       shares: null,
       rule: "REBALANCE",
-      reason: `Rebalance the core index sleeve. Due ${prettyDate(latestYear)}. Record any trade on the ledger after you place it.`,
+      reason: `Rebalance the core stock basket back to equal weight. Due ${prettyDate(latestYear)}. Record any trade on the ledger after you place it. Do not buy an index.`,
     });
   }
   if (latestYear && (state.reviews.metaRuleThrough == null || state.reviews.metaRuleThrough < latestYear)) {
@@ -476,7 +524,7 @@ function dueReminders(state: DeskState, today: string, performance: Performance)
     if (conv != null && qqq != null) {
       comparison =
         conv < qqq
-          ? `Conviction sleeve ${pct(conv)} trails QQQ ${pct(qqq)}. Rule 04: the sleeve has not earned its place. Cut it and move that capital into the core index.`
+          ? `Conviction sleeve ${pct(conv)} trails QQQ ${pct(qqq)}. Rule 04: the sleeve has not earned its place. Cut it and move that capital into the core stock basket.`
           : `Conviction sleeve ${pct(conv)} versus QQQ ${pct(qqq)}. The sleeve is ahead of QQQ on this test, so it keeps its place.`;
     }
     actions.push({
@@ -487,7 +535,7 @@ function dueReminders(state: DeskState, today: string, performance: Performance)
       dollars: null,
       shares: null,
       rule: "METARULE",
-      reason: `Four-quarter test due ${prettyDate(latestYear)}. ${comparison} T-bill yield is not accrued; idle conviction cash is carried at par. Benchmark anchor is the first snapshot this browser recorded, not a backfilled history.`,
+      reason: `Four-quarter test due ${prettyDate(latestYear)}. ${comparison} Idle cash is carried at par and is not put in T-bills. Benchmark anchor is the first snapshot this browser recorded, not a backfilled history. QQQ is the comparison, not a buy.`,
     });
   }
   return actions;

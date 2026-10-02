@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
+import { coreNameTarget } from "../lib/allocation";
 import { prettyDate } from "../lib/dates";
 import { reviewManualTrade } from "../lib/guards";
+import { classifyInstrument } from "../lib/instruments";
 import { moneyAuto, pctPlain, priceFmt } from "../lib/money";
 import { useDesk, type TradeDraft } from "../state";
 import type { TrancheTag } from "../types";
 
-const emptyDraft = (today: string, core: "SPY" | "QQQ"): TradeDraft => ({
+const emptyDraft = (today: string): TradeDraft => ({
   date: today,
-  ticker: core,
+  ticker: "",
   side: "buy",
   dollars: "",
   price: "",
-  sleeve: "core",
+  sleeve: "conviction",
   thesisId: "",
   tranche: "1",
   note: "",
@@ -19,7 +21,7 @@ const emptyDraft = (today: string, core: "SPY" | "QQQ"): TradeDraft => ({
 
 export function LedgerView() {
   const desk = useDesk();
-  const [form, setForm] = useState<TradeDraft>(() => emptyDraft(desk.today, desk.state.settings.coreTicker));
+  const [form, setForm] = useState<TradeDraft>(() => emptyDraft(desk.today));
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<{ dollars: number; shares: number } | null>(null);
 
@@ -32,10 +34,12 @@ export function LedgerView() {
 
   const price = Number(form.price);
   const dollars = Number(form.dollars);
-  const quote = desk.prices?.quotes[form.ticker.toUpperCase()];
+  const ticker = form.ticker.trim().toUpperCase();
+  const quote = desk.prices?.quotes[ticker];
   const thesis = desk.state.theses.find((item) => item.id === form.thesisId);
-  const lot = desk.derived.lots.find((item) => (form.sleeve === "core" ? item.id === "core" : item.thesisId === form.thesisId));
+  const lot = desk.derived.lots.find((item) => (form.sleeve === "core" ? item.id === `core:${ticker}` : item.thesisId === form.thesisId));
   const mark = desk.derived.marks.positions.find((item) => item.id === lot?.id);
+  const instrument = classifyInstrument({ ticker, instrumentType: quote?.instrumentType, quoteType: quote?.quoteType });
 
   const prepare = () => {
     if (form.sleeve === "conviction" && !form.thesisId) {
@@ -43,9 +47,18 @@ export function LedgerView() {
       setPending(null);
       return;
     }
+    if (form.side === "buy" && form.sleeve === "core" && !desk.state.settings.coreTickers.includes(ticker)) {
+      setError("Add this stock on the Capital page before recording a core buy. The basket starts empty.");
+      setPending(null);
+      return;
+    }
     const tranche: TrancheTag | null = form.side === "buy" && form.tranche ? (form.tranche === "fear" ? "fear" : (Number(form.tranche) as 1 | 2 | 3)) : null;
+    const nameTarget = coreNameTarget(desk.derived.alloc, desk.state.settings.coreTickers.length, desk.state.settings.coreSlots);
+    const coreBought = desk.state.trades
+      .filter((trade) => trade.sleeve === "core" && trade.side === "buy" && trade.ticker.toUpperCase() === ticker)
+      .reduce((sum, trade) => sum + trade.dollars, 0);
     const cash = form.sleeve === "core"
-      ? desk.derived.buckets.coreReserve
+      ? Math.max(0, nameTarget - coreBought)
       : (desk.derived.buckets.earmarked.find((row) => row.thesisId === form.thesisId)?.dollars ?? 0) + desk.derived.buckets.dryPowder;
     const review = reviewManualTrade({
       side: form.side,
@@ -62,6 +75,7 @@ export function LedgerView() {
       marketValue: mark?.marketValue ?? 0,
       bookValue: desk.derived.marks.bookValue,
       cash,
+      instrument,
     });
     if (!review.ok) {
       setError(review.reason);
@@ -88,7 +102,7 @@ export function LedgerView() {
       note: form.note,
     });
     setPending(null);
-    setForm(emptyDraft(desk.today, desk.state.settings.coreTicker));
+    setForm(emptyDraft(desk.today));
   };
 
   return (
@@ -96,7 +110,7 @@ export function LedgerView() {
       <header className="sheet-head">
         <p className="kicker">Ledger</p>
         <h2>Holdings</h2>
-        <p className="lede">The brief recommends. The book changes only when you record a buy or a sell. Fill prices are yours. Mark-to-market uses the snapshot, and only the snapshot.</p>
+        <p className="lede">The brief recommends individual stocks only. The book changes only when you record a buy or a sell. Fill prices are yours. Mark-to-market uses the snapshot, and only the snapshot. SPY and QQQ are not tradable here.</p>
       </header>
 
       <form
@@ -126,7 +140,7 @@ export function LedgerView() {
               setForm({
                 ...form,
                 sleeve,
-                ticker: sleeve === "core" ? desk.state.settings.coreTicker : form.ticker,
+                ticker: sleeve === "core" ? desk.state.settings.coreTickers[0] ?? "" : form.ticker,
                 thesisId: sleeve === "core" ? "" : form.thesisId,
               });
             }}

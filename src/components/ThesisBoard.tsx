@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { themeTarget } from "../lib/allocation";
+import { isBenchmarkTicker } from "../lib/instruments";
 import { prettyDate } from "../lib/dates";
 import { uid } from "../lib/id";
 import { moneyAuto } from "../lib/money";
@@ -36,7 +37,7 @@ export function ThesisBoard() {
           Load an illustration
         </button>
       </div>
-      {active.length === 0 ? <p className="empty">No open themes. Week 0 will deploy the core only until a card is approved.</p> : null}
+      {active.length === 0 ? <p className="empty">No open themes. Core buys wait until you name the stocks. This page does not suggest a ticker.</p> : null}
       {desk.state.theses.map((thesis) => (
         <ThesisCard key={thesis.id} thesis={thesis} editing={editing === thesis.id} onEdit={() => setEditing(thesis.id)} onClose={() => setEditing(null)} />
       ))}
@@ -244,12 +245,18 @@ function ThesisForm({ initial, onClose }: { initial: Thesis; onClose: () => void
                 key={status}
                 type="button"
                 className={milestone.status === status ? "pill on" : "pill"}
-                onClick={() =>
+                onClick={() => {
+                  if (status === "hit" && milestone.reported !== true) {
+                    setError(`Milestone ${index + 1} can be marked hit only from a reported number, not guidance.`);
+                    return;
+                  }
+                  setError(null);
                   setMilestone(index, {
                     status,
                     resolvedOn: status === "pending" ? null : milestone.resolvedOn || desk.today,
-                  })
-                }
+                    reported: status === "hit" ? true : milestone.reported,
+                  });
+                }}
               >
                 {status}
               </button>
@@ -261,7 +268,21 @@ function ThesisForm({ initial, onClose }: { initial: Thesis; onClose: () => void
               <input type="date" value={milestone.resolvedOn ?? ""} onChange={(event) => setMilestone(index, { resolvedOn: event.target.value })} />
             </label>
           ) : null}
-          {milestone.status === "hit" ? <p className="funding">Mark hit only on reported numbers, not guidance.</p> : null}
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={milestone.reported === true}
+              onChange={(event) => {
+                const reported = event.target.checked;
+                setMilestone(index, {
+                  reported,
+                  status: reported ? milestone.status : milestone.status === "hit" ? "pending" : milestone.status,
+                  resolvedOn: reported ? milestone.resolvedOn : milestone.status === "hit" ? null : milestone.resolvedOn,
+                });
+              }}
+            />
+            Reported number, not guidance
+          </label>
         </fieldset>
       ))}
       <div className="split">
@@ -372,8 +393,8 @@ function ThesisForm({ initial, onClose }: { initial: Thesis; onClose: () => void
   );
 }
 
-function blankMilestone(today: string): Milestone {
-  return { id: uid(), metric: "", target: "", byDate: today, status: "pending", resolvedOn: null };
+function blankMilestone(): Milestone {
+  return { id: uid(), metric: "", target: "", byDate: "", status: "pending", resolvedOn: null, reported: false };
 }
 
 function blankThesis(today: string): Thesis {
@@ -388,7 +409,7 @@ function blankThesis(today: string): Thesis {
     whyWrong: "",
     killCondition: "",
     killHit: false,
-    milestones: [blankMilestone(today), blankMilestone(today), blankMilestone(today)],
+    milestones: [blankMilestone(), blankMilestone(), blankMilestone()],
     valuationMetric: "",
     addBelow: "",
     trimAbove: "",
@@ -406,13 +427,14 @@ function blankThesis(today: string): Thesis {
 
 function ensureThree(thesis: Thesis): Thesis {
   const milestones = thesis.milestones.slice(0, 3);
-  while (milestones.length < 3) milestones.push(blankMilestone(thesis.openedOn));
+  while (milestones.length < 3) milestones.push(blankMilestone());
   return { ...thesis, milestones };
 }
 
 function validate(thesis: Thesis): string | null {
   if (!thesis.theme.trim()) return "Name the theme.";
-  if (!/^[A-Z0-9.-]{1,12}$/.test(thesis.ticker.trim().toUpperCase())) return "Enter a ticker such as IGV or BRK-B.";
+  if (!/^[A-Z0-9.-]{1,12}$/.test(thesis.ticker.trim().toUpperCase())) return "Enter one company's ticker. Not a fund.";
+  if (isBenchmarkTicker(thesis.ticker)) return "SPY and QQQ are benchmarks. They are never a theme.";
   if (!thesis.marketBelief.trim() || !thesis.ourBelief.trim() || !thesis.whyWrong.trim()) {
     return "Write the market belief, your belief, and why the market is wrong.";
   }
@@ -423,6 +445,7 @@ function validate(thesis: Thesis): string | null {
       return `Milestone ${index + 1} needs a metric, a target, and a date.`;
     }
     if (milestone.status !== "pending" && !milestone.resolvedOn) return `Milestone ${index + 1} needs the date it was hit or missed.`;
+    if (milestone.status === "hit" && milestone.reported !== true) return `Milestone ${index + 1} is a hit only when the figure was reported, not guided.`;
   }
   if (thesis.probability != null && (thesis.probability < 0 || thesis.probability > 100 || Number.isNaN(thesis.probability))) {
     return "P(thesis) is a percentage from 0 to 100.";

@@ -5,6 +5,7 @@ import { exampleThesis } from "./lib/example";
 import { uid } from "./lib/id";
 import { describeSnapshot, fetchLiveQuotes, loadPublishedSnapshot, loadSnapshot, mergeBooks } from "./lib/prices";
 import { applyMetaRuleCycle, proposeRuleChange } from "./lib/rulebook";
+import { safeAllocate } from "./lib/allocation";
 import { defaultState, importState, loadState, saveState, serializeState } from "./lib/storage";
 import type { BriefAction, DeskState, Postmortem, PriceBook, Scorecard, Settings, Thesis, Trade, TrancheTag } from "./types";
 
@@ -76,14 +77,7 @@ function upsertBrief(briefs: DeskState["briefs"], brief: DeskState["briefs"][num
 }
 
 function tickersFor(state: DeskState): string[] {
-  return [
-    "SPY",
-    "QQQ",
-    "IGV",
-    state.settings.coreTicker,
-    ...state.theses.map((thesis) => thesis.ticker),
-    ...state.trades.map((trade) => trade.ticker),
-  ];
+  return ["SPY", "QQQ", ...state.settings.coreTickers, ...state.theses.map((thesis) => thesis.ticker), ...state.trades.map((trade) => trade.ticker)];
 }
 
 export function DeskProvider({ children }: { children: ReactNode }) {
@@ -215,6 +209,7 @@ export function DeskProvider({ children }: { children: ReactNode }) {
     updateSettings: (patch) => {
       setState((current) => {
         const settings = { ...current.settings, ...patch };
+        if (!safeAllocate(settings.capital, settings.themeCount).ok) return current;
         return {
           ...current,
           settings,

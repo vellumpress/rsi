@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { themeTarget } from "../lib/allocation";
+import { clampCoreSlots, coreNameTarget, safeAllocate, themeTarget } from "../lib/allocation";
 import { prettyDate } from "../lib/dates";
+import { buyBlockedReason, classifyInstrument, isBenchmarkTicker } from "../lib/instruments";
 import { moneyAuto, pctPlain } from "../lib/money";
 import { useDesk } from "../state";
 
@@ -9,16 +10,25 @@ export function CapitalView() {
   const { settings } = desk.state;
   const { alloc, buckets, schedule } = desk.derived;
   const [capital, setCapital] = useState(String(settings.capital));
+  const [capitalError, setCapitalError] = useState<string | null>(null);
+  const [coreDraft, setCoreDraft] = useState("");
+  const [coreError, setCoreError] = useState<string | null>(null);
 
   useEffect(() => {
     setCapital(String(settings.capital));
   }, [settings.capital]);
 
   const active = desk.state.theses.filter((thesis) => !thesis.archived);
-  const commitCapital = () => {
-    const next = Number(capital.replace(/,/g, ""));
-    if (Number.isFinite(next) && next > 0) desk.updateSettings({ capital: next });
-    else setCapital(String(settings.capital));
+  const commitCapital = (raw = capital) => {
+    const next = Number(raw.replace(/,/g, ""));
+    const plan = safeAllocate(next, settings.themeCount);
+    if (!plan.ok) {
+      setCapitalError(plan.error);
+      setCapital(String(settings.capital));
+      return;
+    }
+    setCapitalError(null);
+    desk.updateSettings({ capital: plan.allocation.capital });
   };
 
   return (
@@ -27,7 +37,7 @@ export function CapitalView() {
         <p className="kicker">01 · Allocation</p>
         <h2>Capital map</h2>
         <p className="lede">
-          The worked example is $100,000. Every sleeve, tranche, and cap scales with the amount you fund. Core 30%, conviction 45%, dry powder 25%.
+          The worked example is $100,000. Every sleeve, tranche, and cap scales with the amount you fund. Core 30%, conviction 45%, dry powder 25%. Core is individual stocks you choose, not an index. Idle money is cash, not T-bills.
         </p>
       </header>
 
@@ -35,13 +45,20 @@ export function CapitalView() {
         className="setup"
         onSubmit={(event) => {
           event.preventDefault();
-          commitCapital();
+          const field = event.currentTarget.querySelector("input");
+          commitCapital(field?.value ?? capital);
         }}
       >
         <label>
           Amount to invest
-          <input inputMode="decimal" value={capital} onChange={(event) => setCapital(event.target.value)} onBlur={commitCapital} />
+          <input
+            inputMode="decimal"
+            value={capital}
+            onChange={(event) => setCapital(event.target.value)}
+            onBlur={(event) => commitCapital(event.currentTarget.value)}
+          />
         </label>
+        {capitalError ? <p className="warn">{capitalError}</p> : null}
         <label>
           Start date
           <input type="date" value={settings.startDate} onChange={(event) => desk.updateSettings({ startDate: event.target.value })} />
@@ -57,18 +74,73 @@ export function CapitalView() {
             <option value={5}>5 themes</option>
           </select>
         </label>
-        <fieldset>
-          <legend>Core index</legend>
-          <label className="check">
-            <input type="radio" name="core" checked={settings.coreTicker === "SPY"} onChange={() => desk.updateSettings({ coreTicker: "SPY" })} />
-            SPY · S&amp;P 500
-          </label>
-          <label className="check">
-            <input type="radio" name="core" checked={settings.coreTicker === "QQQ"} onChange={() => desk.updateSettings({ coreTicker: "QQQ" })} />
-            QQQ · Nasdaq 100
-          </label>
-        </fieldset>
+        <label>
+          Core slots
+          <input
+            type="number"
+            min={1}
+            max={20}
+            value={settings.coreSlots}
+            onChange={(event) => desk.updateSettings({ coreSlots: clampCoreSlots(Number(event.target.value)) })}
+          />
+        </label>
       </form>
+      <form
+        className="setup"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const ticker = coreDraft.trim().toUpperCase();
+          if (!/^[A-Z0-9.-]{1,12}$/.test(ticker)) {
+            setCoreError("Enter one company's ticker.");
+            return;
+          }
+          if (isBenchmarkTicker(ticker)) {
+            setCoreError("SPY and QQQ are benchmarks. They cannot sit in the core.");
+            return;
+          }
+          const quote = desk.prices?.quotes[ticker];
+          const kind = classifyInstrument({ ticker, instrumentType: quote?.instrumentType, quoteType: quote?.quoteType });
+          const blocked = kind === "etf" || kind === "mutualfund" || kind === "other" ? buyBlockedReason(kind) : null;
+          if (blocked) {
+            setCoreError(blocked);
+            return;
+          }
+          if (settings.coreTickers.includes(ticker)) {
+            setCoreDraft("");
+            setCoreError(null);
+            return;
+          }
+          desk.updateSettings({ coreTickers: [...settings.coreTickers, ticker] });
+          setCoreDraft("");
+          setCoreError(kind === "unknown" ? "Added. Buys stay blocked until the snapshot says this symbol is EQUITY." : null);
+        }}
+      >
+        <label>
+          Add a core stock you choose
+          <input value={coreDraft} onChange={(event) => setCoreDraft(event.target.value.toUpperCase())} placeholder="Ticker" />
+        </label>
+        <button type="submit">Add to the basket</button>
+      </form>
+      {coreError ? <p className="warn">{coreError}</p> : null}
+      {settings.coreTickers.length === 0 ? (
+        <p className="warn">No core names yet. The brief will not recommend a core buy until you choose them. RSI does not ship a stock list.</p>
+      ) : (
+        <ul className="notes">
+          {settings.coreTickers.map((ticker) => (
+            <li key={ticker}>
+              {ticker} · you chose this
+              <button type="button" onClick={() => desk.updateSettings({ coreTickers: settings.coreTickers.filter((item) => item !== ticker) })}>
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {settings.coreSlots < 8 || settings.coreSlots > 10 ? (
+        <p className="funding">The intended basket is about 8–10 equal-weight names. Another count is allowed. Unfilled slots stay in cash, and no single name can be bought through 15% of the book.</p>
+      ) : (
+        <p className="funding">Each name is one equal-weight slot of the 30% core, bought in three monthly tranches. Unfilled slots stay in cash.</p>
+      )}
       {desk.state.trades.length > 0 ? (
         <p className="warn">Changing the funded amount rewrites opening cash. Export a backup first if the ledger already has trades.</p>
       ) : null}
@@ -89,21 +161,21 @@ export function CapitalView() {
               <td>Core</td>
               <td>30%</td>
               <td>{moneyAuto(alloc.core)}</td>
-              <td>Broad index, three monthly tranches of {moneyAuto(alloc.coreTranche)}</td>
-              <td>Itself</td>
+              <td>Equal-weight stocks you choose. Three monthly tranches. Sleeve tranche {moneyAuto(alloc.coreTranche)} before it is split.</td>
+              <td>The basket</td>
             </tr>
             <tr>
               <td>Conviction</td>
               <td>45%</td>
               <td>{moneyAuto(alloc.conviction)}</td>
-              <td>{settings.themeCount} themes, each in thirds. Unspent thirds wait in T-bills.</td>
+              <td>{settings.themeCount} themes, each in thirds. Unspent thirds wait in cash.</td>
               <td>QQQ</td>
             </tr>
             <tr>
               <td>Dry powder</td>
               <td>25%</td>
               <td>{moneyAuto(alloc.dryPowder)}</td>
-              <td>T-bills. Extra fear adds, new themes, and every trim or exit.</td>
+              <td>Cash. Extra fear adds, new themes, and every trim or exit.</td>
               <td>—</td>
             </tr>
             <tr>
@@ -111,7 +183,7 @@ export function CapitalView() {
               <td>100%</td>
               <td>{moneyAuto(alloc.capital)}</td>
               <td>Buys stop at 15% of book ({moneyAuto(alloc.positionCap)}). Trim above 20%.</td>
-              <td>SPY</td>
+              <td>SPY, comparison only</td>
             </tr>
           </tbody>
         </table>
@@ -134,7 +206,7 @@ export function CapitalView() {
           <tbody>
             {active.length === 0 ? (
               <tr>
-                <td colSpan={4}>No thesis cards yet. The conviction sleeve, {moneyAuto(buckets.unassignedConviction)}, is parked in T-bills.</td>
+                <td colSpan={4}>No thesis cards yet. The conviction sleeve, {moneyAuto(buckets.unassignedConviction)}, is cash.</td>
               </tr>
             ) : (
               active.map((thesis) => {
@@ -152,7 +224,7 @@ export function CapitalView() {
             )}
             <tr>
               <td>Unassigned conviction</td>
-              <td colSpan={3}>{moneyAuto(buckets.unassignedConviction)} in T-bills, waiting for a theme that clears the bar.</td>
+              <td colSpan={3}>{moneyAuto(buckets.unassignedConviction)} in cash, waiting for a theme that clears the bar.</td>
             </tr>
           </tbody>
         </table>
@@ -181,7 +253,13 @@ export function CapitalView() {
           <dd>{moneyAuto(buckets.dryPowder)}</dd>
         </div>
       </dl>
-      <p className="funding">T-bill yield is not accrued. Idle cash is carried at par.</p>
+      <p className="funding">
+        Idle money is cash, carried at par.{" "}
+        {settings.coreTickers.length === 0
+          ? "Name the core stocks before a core dollar is sized."
+          : `Each chosen name is targeted at ${moneyAuto(coreNameTarget(alloc, settings.coreTickers.length, settings.coreSlots))}.`}{" "}
+        SPY and QQQ are not holdings.
+      </p>
 
       <h3>Deployment</h3>
       <div className="table-wrap">
@@ -214,8 +292,8 @@ export function CapitalView() {
       <ol className="rules-list">
         <li>Never average down on a thesis that has missed a milestone.</li>
         <li>Never exit a whole position on sentiment alone. Only the kill condition does that.</li>
-        <li>Never change a rule during a drawdown.</li>
-        <li>If the desk cannot beat the index after four quarters, own more of the index.</li>
+        <li>Never change a rule during a drawdown. Here that means the marked book is down 10% or more from its peak. An incomplete mark stays locked too.</li>
+        <li>If the conviction sleeve trails QQQ after four quarters, move that capital into the core stock basket.</li>
       </ol>
 
       <h3>Cadence</h3>
@@ -234,7 +312,7 @@ export function CapitalView() {
             </tr>
             <tr>
               <td>Monthly</td>
-              <td>Scorecard: milestones, probability calibration, returns versus QQQ and SPY.</td>
+              <td>Scorecard: milestones, probability calibration, returns versus QQQ and SPY. Those two are benchmarks only.</td>
             </tr>
             <tr>
               <td>Quarterly</td>
@@ -242,7 +320,7 @@ export function CapitalView() {
             </tr>
             <tr>
               <td>Yearly</td>
-              <td>Rebalance the core. Meta-rule test: has the conviction sleeve earned its place against QQQ?</td>
+              <td>Rebalance the core stocks to equal weight. Meta-rule test: has the conviction sleeve earned its place against QQQ? If not, the capital moves into the core basket.</td>
             </tr>
           </tbody>
         </table>

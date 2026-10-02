@@ -161,6 +161,7 @@ th { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.08em; text-t
 .pills { display: flex; gap: 0.35rem; flex-wrap: wrap; }
 .milestone-edit { display: grid; gap: 0.55rem; }
 .warn { color: var(--red); }
+.deviation { background: var(--gold-soft); border: 1px solid var(--line); padding: 0.8rem 1rem; margin: 0.6rem 0 1rem; }
 .gaps { background: var(--gold-soft); padding: 0.8rem 1rem; }
 .gaps h3, .rules summary, .log summary, .history summary { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .notes, .rules-list { padding-left: 1.1rem; }

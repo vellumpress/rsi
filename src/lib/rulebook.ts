@@ -89,13 +89,23 @@ export function isEditableParameter(value: string): value is EditableParameter {
   return value in BANDS;
 }
 
-/** p.1 rule 03. Any mark below the peak is a drawdown. Missing marks stay locked. */
+/**
+ * p.1 rule 03. A drawdown is a marked book down 10% or more from its peak.
+ * Any print under the high would lock edits on almost every day, so the quarterly change could not be used.
+ * 10% is a real drawdown and it locks earlier than the 30% circuit breaker. Missing marks stay locked.
+ */
+export const RULE_EDIT_DRAWDOWN = 0.1;
+
 export function ruleEditsLocked(bookValue: number | null, peak: number | null): { locked: boolean; reason: string } {
   if (bookValue == null || peak == null || !(peak > 0)) {
     return { locked: true, reason: "Book value is incomplete. Rule edits stay locked until the book can be marked. No drawdown is invented." };
   }
-  if (bookValue < peak - 0.005) {
-    return { locked: true, reason: "The book is below its peak. Rule 03: never change a rule during a drawdown." };
+  const drawdown = (peak - bookValue) / peak;
+  if (drawdown + 1e-12 >= RULE_EDIT_DRAWDOWN) {
+    return {
+      locked: true,
+      reason: "The book is down 10% or more from its peak. Rule 03: never change a rule during a drawdown. A smaller dip does not lock edits.",
+    };
   }
   return { locked: false, reason: "" };
 }
@@ -198,7 +208,7 @@ export function metaRuleVerdict(
     return {
       due: true,
       shrink: true,
-      reason: "The conviction sleeve trails QQQ after four quarters. Rule 04: own more of the index. Shrink the sleeve and move that capital into the core.",
+      reason: "The conviction sleeve trails QQQ after four quarters. Rule 04: shrink the sleeve and move that capital into the core stock basket. Not into an index.",
     };
   }
   return { due: true, shrink: false, reason: "The conviction sleeve leads QQQ on this test, so it keeps its place." };

@@ -15,9 +15,21 @@ const base = {
   marketValue: 0,
   bookValue: 100_000,
   cash: 20_000,
+  instrument: "equity" as const,
 };
 
 describe("ledger guards", () => {
+  it("rejects an ETF or an unconfirmed symbol and never buys a benchmark", () => {
+    const etf = reviewManualTrade({ ...base, instrument: "etf" });
+    expect(etf.ok).toBe(false);
+    if (!etf.ok) expect(etf.reason).toMatch(/ETF or fund/);
+    const fund = reviewManualTrade({ ...base, instrument: "mutualfund" });
+    expect(fund.ok).toBe(false);
+    const unknown = reviewManualTrade({ ...base, instrument: "unknown" });
+    expect(unknown.ok).toBe(false);
+    if (!unknown.ok) expect(unknown.reason).toMatch(/EQUITY/);
+  });
+
   it("refuses a hand-entered fear tranche and an average-down after a miss", () => {
     const fear = reviewManualTrade({ ...base, tranche: 2 });
     expect(fear.ok).toBe(false);

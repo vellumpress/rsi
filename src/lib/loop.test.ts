@@ -3,10 +3,11 @@ import { averageDownBlocked, bandGate, bearGate, brierScore, calibrationTable, f
 
 describe("recursive loop gates", () => {
   it("accepts only a disbelieved trend with evidence", () => {
-    expect(scoutGate({ trend: "", ticker: "IGV", disbelief: "low-valuation", evidence: "Cheap versus ten years." }).ok).toBe(false);
-    expect(scoutGate({ trend: "Software", ticker: "IGV", disbelief: null, evidence: "Drawdown." }).ok).toBe(false);
+    expect(scoutGate({ trend: "", ticker: "CRM", disbelief: "low-valuation", evidence: "Cheap versus ten years." }).ok).toBe(false);
+    expect(scoutGate({ trend: "Software", ticker: "CRM", disbelief: null, evidence: "Drawdown." }).ok).toBe(false);
+    expect(scoutGate({ trend: "Software disbelief", ticker: "SPY", disbelief: "negative-sentiment", evidence: "The index is not a company." }).ok).toBe(false);
     expect(
-      scoutGate({ trend: "Software disbelief", ticker: "IGV", disbelief: "negative-sentiment", evidence: "The ETF is down while retention holds." }).ok,
+      scoutGate({ trend: "Software disbelief", ticker: "CRM", disbelief: "negative-sentiment", evidence: "The shares are down while reported retention holds." }).ok,
     ).toBe(true);
   });
 

@@ -1,4 +1,5 @@
 import { addMonths } from "./dates";
+import { isBenchmarkTicker } from "./instruments";
 import { fitBuy } from "./orders";
 
 /**
@@ -26,7 +27,8 @@ export interface ProbabilityCall {
 export function scoutGate(input: { trend: string; ticker: string; disbelief: Disbelief | null; evidence: string }): { ok: boolean; reason: string } {
   // p.2 step 1. Both disbelief types are the ones the playbook names. Anything else is not a scout.
   if (!input.trend.trim()) return { ok: false, reason: "Name the trend." };
-  if (!/^[A-Z0-9.-]{1,12}$/.test(input.ticker.trim().toUpperCase())) return { ok: false, reason: "Enter a ticker such as IGV or BRK-B." };
+  if (!/^[A-Z0-9.-]{1,12}$/.test(input.ticker.trim().toUpperCase())) return { ok: false, reason: "Enter the ticker of one company, not a fund." };
+  if (isBenchmarkTicker(input.ticker)) return { ok: false, reason: "SPY and QQQ are benchmarks. They are never a theme and never a buy." };
   if (input.disbelief !== "negative-sentiment" && input.disbelief !== "low-valuation") {
     return { ok: false, reason: "The scout is a trend the market disbelieves: improving fundamentals with negative sentiment, or a low valuation versus its own history." };
   }

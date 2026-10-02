@@ -30,7 +30,7 @@ export function RulebookView() {
         <p className="kicker">Rulebook {book.version}</p>
         <h2>One change a quarter</h2>
         <p className="lede">
-          Adopted {prettyDate(book.adoptedOn)}. Cycle {book.cycle}. The engine reads these thresholds on the next run. The 15% cap, the 20% overweight line, and the 30% circuit breaker do not bend.
+          Adopted {prettyDate(book.adoptedOn)}. Cycle {book.cycle}. The engine reads these thresholds on the next run. The 15% cap, the 20% overweight line, and the 30% circuit breaker do not bend. Rule edits lock when the marked book is down 10% or more from its peak, and when the mark is incomplete. A smaller dip does not lock them: locking on any print under the high would freeze the rulebook almost every day.
         </p>
       </header>
       <dl className="stats">
@@ -83,7 +83,7 @@ export function RulebookView() {
           onSubmit={(event) => {
             event.preventDefault();
             const reason = desk.cycleRulebook(cycleEvidence);
-            setMessage(reason ?? "The sleeve is flagged to shrink into the core. Record the trades on the ledger. The rulebook cycled a major version. That cycle is not a threshold edit.");
+            setMessage(reason ?? "The sleeve is flagged to shrink into the core stock basket. Record the sells, then deploy that cash in equal weight across the core names. Do not buy an index. The rulebook cycled a major version. That cycle is not a threshold edit.");
           }}
         >
           <label>

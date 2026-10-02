@@ -1,4 +1,5 @@
 import { floorOrder, fromCents, toCents } from "./cents";
+import { buyBlockedReason, type InstrumentClass } from "./instruments";
 import { averageDownBlocked, fullExitAllowed } from "./loop";
 import { fitBuy } from "./orders";
 import type { TrancheTag } from "../types";
@@ -22,12 +23,15 @@ export function reviewManualTrade(input: {
   marketValue: number | null;
   bookValue: number | null;
   cash: number;
+  instrument?: InstrumentClass;
 }): { ok: true; dollars: number; shares: number } | { ok: false; reason: string } {
   if (!(input.price > 0) || !Number.isFinite(input.price) || !(input.dollars > 0) || !Number.isFinite(input.dollars)) {
     return { ok: false, reason: "Enter a dollar amount and the price you actually paid or received." };
   }
   if (input.side === "buy") {
-    if (input.side === "buy" && input.tranche === 1 && input.alreadyDeployed) {
+    const blocked = buyBlockedReason(input.instrument ?? "unknown");
+    if (blocked) return { ok: false, reason: blocked };
+    if (input.tranche === 1 && input.alreadyDeployed) {
       return { ok: false, reason: "Tranche 1 is already on. Tranches 2 and 3 come only from the execution engine." };
     }
     if (input.sleeve === "conviction" && !input.fromEngine && input.tranche != null && input.tranche !== 1) {
@@ -36,7 +40,7 @@ export function reviewManualTrade(input: {
     if (input.sleeve === "conviction" && averageDownBlocked(input.missedMilestones)) {
       return { ok: false, reason: "A missed milestone freezes adds. Never average down." };
     }
-    if (input.sleeve === "conviction" && (input.bookValue == null || !(input.bookValue > 0))) {
+    if (input.bookValue == null || !(input.bookValue > 0)) {
       return { ok: false, reason: "Insufficient data, no action. The book is not fully marked, so the 15% cap cannot be checked." };
     }
     const fit = fitBuy({
@@ -45,14 +49,17 @@ export function reviewManualTrade(input: {
       earmarked: input.cash,
       dry: 0,
       marketValue: input.marketValue ?? 0,
-      bookValue: input.sleeve === "core" ? Math.max(input.bookValue ?? 0, input.cash, input.dollars) : input.bookValue,
-      positionCap: input.sleeve === "core" ? 1 : 0.15,
+      bookValue: input.bookValue,
+      positionCap: 0.15,
       useEarmarked: true,
     });
     if (!fit.ok) return { ok: false, reason: fit.reason };
     return { ok: true, dollars: fit.dollars, shares: fit.shares };
   }
 
+  if (input.fromEngine && input.instrument && input.instrument !== "equity") {
+    return { ok: false, reason: "RSI does not recommend a sell of an ETF, fund, or index. SPY and QQQ are benchmarks only." };
+  }
   if (input.exitReason === "sentiment") {
     return { ok: false, reason: "Sentiment is not an exit. A full exit is a kill, including a second milestone miss, or rule 04." };
   }

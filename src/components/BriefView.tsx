@@ -50,7 +50,7 @@ export function BriefView() {
           <tbody>
             {brief.quotes.map((quote) => (
               <tr key={quote.ticker}>
-                <td>{quote.ticker}</td>
+                <td>{quote.ticker}{quote.role === "benchmark" ? " · benchmark" : ""}</td>
                 <td>{quote.asOf ? prettyDate(quote.asOf) : "—"}</td>
                 <td>{quote.ageTradingDays == null ? "—" : `${quote.ageTradingDays} trading day${quote.ageTradingDays === 1 ? "" : "s"}`}</td>
                 <td>{quote.source}</td>
@@ -113,10 +113,10 @@ export function BriefView() {
         <summary>Rule order</summary>
         <ol>
           <li>Circuit breaker. Book down 30% from its peak freezes every add, including scheduled deployment. Exits and trims still run.</li>
-          <li>R1. Kill condition, or a second missed milestone. Exit 100%. Cash to dry powder. Post-mortem within 7 days.</li>
+          <li>R1. Kill condition, or a second missed milestone. Exit 100%. Proceeds to cash. Post-mortem within 7 days.</li>
           <li>R2. Extreme greed (price 50% or more above the 200-day average, or a top-decile valuation) or a position above 20% of the book. Trim 20% in v1.0, inside the 20–25% band, or back to 15% if overweight. Never a full exit.</li>
           <li>R3. One missed milestone. Freeze adds. A second miss is a kill. Never average down.</li>
-          <li>R4. Extreme fear: 30% or more below the 52-week high, below the 200-day average, and a bottom-quartile valuation, with milestones intact. Buy tranche 2 from earmarked cash, then dry powder.</li>
+          <li>R4. Extreme fear needs all three signals, on the stock itself, plus intact milestones. Buy tranche 2 from earmarked cash, then dry powder. A later cash add waits until tranches 2 and 3 are both done.</li>
           <li>R5. A milestone confirmed since the last buy, on reported numbers. Buy tranche 3 if it is unused. Same 15% cap.</li>
           <li>Otherwise hold, and log the check.</li>
         </ol>
@@ -137,7 +137,7 @@ function ActionGroup({ title, empty, actions }: { title: string; empty: string; 
             <div className="action-top">
               <span className="side">{label(action.side)}</span>
               <span className="ticker">{action.ticker}</span>
-              <span className="amount">{action.dollars == null ? "Amount withheld" : action.dollars === 0 ? "—" : moneyAuto(action.dollars)}</span>
+              <span className="amount">{action.dollars == null || action.dollars === 0 ? "—" : moneyAuto(action.dollars)}</span>
             </div>
             <p className="action-title">{action.rule} · {action.title}</p>
             <p>{action.reason}</p>
@@ -222,7 +222,7 @@ function ScorecardForm({ month }: { month: string }) {
       onSubmit={(event) => {
         event.preventDefault();
         if (notes.trim().length < 20) {
-          setError("Write the scorecard. Milestones, calibration, and the index comparison need a sentence.");
+          setError("Write the scorecard. Milestones, calibration, and the benchmark comparison need a sentence.");
           return;
         }
         desk.saveScorecard({

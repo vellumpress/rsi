@@ -50,7 +50,7 @@ export function totalCash(capital: number, trades: Trade[]): number {
   return trades.reduce((cash, trade) => cash + (trade.side === "sell" ? trade.dollars : -trade.dollars), capital);
 }
 
-export function replayTrades(trades: Trade[], coreTicker: string): PositionLot[] {
+export function replayTrades(trades: Trade[]): PositionLot[] {
   const ordered = [...trades].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   const lots = new Map<string, PositionLot>();
 
@@ -73,14 +73,15 @@ export function replayTrades(trades: Trade[], coreTicker: string): PositionLot[]
   };
 
   for (const trade of ordered) {
-    const key = trade.sleeve === "core" ? "core" : trade.thesisId ? `thesis:${trade.thesisId}` : `other:${trade.ticker}`;
+    const ticker = trade.ticker.trim().toUpperCase();
+    const key = trade.sleeve === "core" ? `core:${ticker || "UNKNOWN"}` : trade.thesisId ? `thesis:${trade.thesisId}` : `other:${ticker}`;
     const lot = ensure(key, {
       id: key,
-      ticker: trade.sleeve === "core" ? trade.ticker || coreTicker : trade.ticker,
+      ticker,
       sleeve: trade.sleeve === "core" ? "core" : trade.thesisId ? "conviction" : "other",
       thesisId: trade.thesisId,
     });
-    if (trade.sleeve === "core" && trade.ticker) lot.ticker = trade.ticker;
+    if (ticker) lot.ticker = ticker;
 
     if (trade.side === "buy") {
       lot.shares += trade.shares;
@@ -123,7 +124,7 @@ function netInvested(trades: Trade[], thesisId: string): number {
 export function cashBuckets(settings: Settings, theses: Thesis[], trades: Trade[]): CashBuckets {
   const alloc = allocate(settings.capital, settings.themeCount);
   const cash = totalCash(settings.capital, trades);
-  const lots = replayTrades(trades, settings.coreTicker);
+  const lots = replayTrades(trades);
   const coreBuys = trades
     .filter((trade) => trade.sleeve === "core" && trade.side === "buy")
     .reduce((sum, trade) => sum + trade.dollars, 0);
@@ -168,7 +169,7 @@ export function markBook(
   prices: PriceBook | null,
 ): MarkedBook {
   const buckets = cashBuckets(settings, theses, trades);
-  const lots = replayTrades(trades, settings.coreTicker).filter((lot) => lot.shares > SHARE_EPS);
+  const lots = replayTrades(trades).filter((lot) => lot.shares > SHARE_EPS);
   const gaps: string[] = [];
   const preliminary = lots.map((lot) => {
     const quote = quoteFor(prices, lot.ticker);

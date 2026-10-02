@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DeskState, Thesis, Trade } from "../types";
-import { cashBuckets, totalCash } from "./ledger";
+import { cashBuckets, replayTrades, totalCash } from "./ledger";
 import { defaultState } from "./storage";
 import { emptyLoop } from "./thesis";
 
@@ -94,6 +94,15 @@ describe("cash buckets", () => {
     expect(trimmed.dryPowder).toBe(27_000);
     expect(trimmed.earmarkedTotal).toBe(10_000);
     expect(trimmed.coreReserve + trimmed.earmarkedTotal + trimmed.unassignedConviction + trimmed.dryPowder).toBe(trimmed.totalCash);
+  });
+
+  it("keeps each core stock in its own lot and does not fold them into an index", () => {
+    const lots = replayTrades([
+      trade({ id: "a", side: "buy", dollars: 1_000, ticker: "AAA", sleeve: "core", shares: 10, price: 100 }),
+      trade({ id: "b", side: "buy", dollars: 500, ticker: "BBB", sleeve: "core", shares: 5, price: 100 }),
+    ]);
+    expect(lots.map((lot) => lot.id).sort()).toEqual(["core:AAA", "core:BBB"]);
+    expect(lots.every((lot) => lot.ticker !== "SPY" && lot.ticker !== "QQQ")).toBe(true);
   });
 
   it("releases an archived theme's unused thirds back into the conviction sleeve", () => {

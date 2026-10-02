@@ -2,6 +2,11 @@ import type { ThemeCount } from "../types";
 import { fromCents, MAX_CAPITAL_DOLLARS, splitCents, toCents } from "./cents";
 import { cents } from "./money";
 
+/** Equal-weight core basket. The user picks the names. Eight is the default; about 8–10 is the intended size. */
+export const DEFAULT_CORE_SLOTS = 8;
+export const MIN_CORE_SLOTS = 1;
+export const MAX_CORE_SLOTS = 20;
+
 export const CORE_WEIGHT = 0.3;
 export const CONVICTION_WEIGHT = 0.45;
 export const DRY_POWDER_WEIGHT = 0.25;
@@ -54,7 +59,7 @@ export function safeAllocate(capital: number, themeCount: number): { ok: true; a
   let perThemeC = 0;
   let warning: string | undefined;
   if (themeCount === 0) {
-    warning = "No themes. The conviction sleeve stays in T-bills until a card is approved.";
+    warning = "No themes. The conviction sleeve stays in cash until a card is approved.";
   } else if (themeCount < 3) {
     perThemeC = Math.min(Math.floor(convictionC / themeCount), capC);
     warning = "The playbook runs 3 to 5 themes. This target is capped at 15% of the book.";
@@ -92,4 +97,31 @@ export function themeTarget(
 
 export function displayCents(n: number): number {
   return cents(n);
+}
+
+export function clampCoreSlots(slots: number): number {
+  if (!Number.isInteger(slots)) return DEFAULT_CORE_SLOTS;
+  return Math.min(MAX_CORE_SLOTS, Math.max(MIN_CORE_SLOTS, slots));
+}
+
+/**
+ * Dollars for one chosen core name. Unfilled slots stay cash, so a short list does not
+ * concentrate the whole 30% sleeve. Each name is also capped at 15% of the book.
+ */
+export function coreNameTarget(alloc: Pick<Allocation, "core" | "positionCap">, chosen: number, slots: number): number {
+  if (chosen <= 0) return 0;
+  const width = Math.max(chosen, clampCoreSlots(slots));
+  const total = toCents(alloc.core);
+  const cap = toCents(alloc.positionCap);
+  if (total == null || cap == null) return 0;
+  const equal = Math.floor(total / width);
+  return fromCents(Math.min(equal, cap));
+}
+
+/** Three monthly tranches of one core name, in cents, summing to the name's target. */
+export function coreNameTranches(alloc: Pick<Allocation, "core" | "positionCap">, chosen: number, slots: number): [number, number, number] {
+  const target = toCents(coreNameTarget(alloc, chosen, slots));
+  if (target == null || target <= 0) return [0, 0, 0];
+  const parts = splitCents(target, [1 / 3, 1 / 3, 1 / 3]);
+  return [fromCents(parts[0]), fromCents(parts[1]), fromCents(parts[2])];
 }

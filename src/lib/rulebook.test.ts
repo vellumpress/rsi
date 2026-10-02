@@ -32,8 +32,10 @@ describe("rulebook", () => {
     expect(second.reason).toMatch(/at most one/i);
   });
 
-  it("locks every threshold edit while the book is below its peak, including an incomplete mark", () => {
-    expect(ruleEditsLocked(99_000, 100_000).locked).toBe(true);
+  it("locks threshold edits at a 10% drawdown, and not on a smaller dip", () => {
+    expect(ruleEditsLocked(99_000, 100_000).locked).toBe(false);
+    expect(ruleEditsLocked(90_000, 100_000).locked).toBe(true);
+    expect(ruleEditsLocked(89_000, 100_000).locked).toBe(true);
     expect(ruleEditsLocked(100_000, 100_000).locked).toBe(false);
     expect(ruleEditsLocked(null, 100_000).locked).toBe(true);
     const refused = proposeRuleChange(defaultRulebook("2026-10-02"), {
@@ -80,5 +82,6 @@ describe("rulebook", () => {
     expect(metaRuleVerdict(0.2, 0.1, 4).shrink).toBe(false);
     expect(metaRuleVerdict(null, 0.1, 4).shrink).toBe(false);
     expect(metaRuleVerdict(null, 0.1, 4).reason).toMatch(/Insufficient data, no action/);
+    expect(metaRuleVerdict(-0.05, 0.04, 4).reason).toMatch(/core stock basket/);
   });
 });

@@ -3,12 +3,12 @@ import { addMonths } from "./dates";
 import { uid } from "./id";
 import { emptyLoop } from "./thesis";
 
-/** An editable illustration. Valuation is left blank on purpose. */
+/** A blank illustration. It is not a stock pick and it is not approved, so it cannot become a buy. */
 export function exampleThesis(today: string): Thesis {
   return {
     id: uid(),
-    theme: "Software disbelief",
-    ticker: "IGV",
+    theme: "Illustration — replace this",
+    ticker: "",
     openedOn: today,
     version: 1,
     marketBelief: "Software is a broken sector. The market has already taken the drawdown as proof that the business is impaired.",
@@ -35,8 +35,8 @@ export function exampleThesis(today: string): Thesis {
     benchmark: "QQQ",
     archived: false,
     log: [],
-    ...emptyLoop("approved"),
+    ...emptyLoop("thesis"),
     disbelief: "negative-sentiment",
-    evidence: "The sector sold off while reported cash flows were still being printed. This illustration is pre-marked approved so Week 0 can be inspected. A real theme goes through the loop gates first.",
+    evidence: "Replace this with evidence. This card is not a recommendation and it is not approved, so the brief will not buy it.",
   };
 }

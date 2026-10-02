@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { toCents } from "./cents";
-import { allocate, safeAllocate, themeTarget } from "./allocation";
+import { allocate, coreNameTarget, coreNameTranches, safeAllocate, themeTarget } from "./allocation";
 
 describe("allocation", () => {
   it("splits $100,000 into 30 / 45 / 25", () => {
@@ -61,6 +61,16 @@ describe("allocation", () => {
     expect(themeTarget(plan, { targetMode: "plan", targetDollars: null })).toBe(9_000);
     expect(themeTarget(plan, { targetMode: "custom", targetDollars: 20_000 })).toBe(15_000);
     expect(themeTarget(plan, { targetMode: "custom", targetDollars: 4_000 })).toBe(4_000);
+  });
+
+  it("splits the core across the slots the user chose and caps one name at 15%", () => {
+    const plan = allocate(100_000, 3);
+    expect(coreNameTarget(plan, 0, 8)).toBe(0);
+    expect(coreNameTarget(plan, 8, 8)).toBe(3_750);
+    expect(coreNameTarget(plan, 2, 8)).toBe(3_750);
+    expect(coreNameTarget(plan, 1, 1)).toBe(15_000);
+    const parts = coreNameTranches(plan, 8, 8);
+    expect(parts[0] + parts[1] + parts[2]).toBe(3_750);
   });
 
   it("rejects a theme count outside 3–5", () => {

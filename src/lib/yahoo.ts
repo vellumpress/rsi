@@ -17,6 +17,8 @@ export function emptyQuote(ticker: string, error: string, source = "Yahoo Financ
     currency: null,
     bars: 0,
     previousClose: null,
+    instrumentType: null,
+    quoteType: null,
     source,
     error,
   };
@@ -42,6 +44,8 @@ interface YahooResult {
   meta?: {
     symbol?: string;
     currency?: string;
+    instrumentType?: string;
+    quoteType?: string;
     regularMarketPrice?: number;
     regularMarketTime?: number;
     fiftyTwoWeekHigh?: number;
@@ -81,6 +85,8 @@ export function parseYahooChart(payload: unknown, fallbackTicker: string): Price
     currency: meta.currency ?? null,
     bars: adjusted.length,
     previousClose,
+    instrumentType: typeof meta.instrumentType === "string" ? meta.instrumentType : null,
+    quoteType: typeof meta.quoteType === "string" ? meta.quoteType : null,
     source: "Yahoo Finance chart",
     error: sma200 == null ? "Fewer than 200 closes, so the 200-day average is withheld." : undefined,
   };
