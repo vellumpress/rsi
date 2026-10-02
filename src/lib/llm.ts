@@ -7,7 +7,7 @@ export const LLM_STORAGE_KEY = "rsi.llm";
 /** Most capable chat model named in the xAI docs. */
 export const DEFAULT_GROK_MODEL = "grok-4.7";
 export const GROK_CHAT_URL = "https://api.x.ai/v1/chat/completions";
-export const RSI_GROK_URL = "https://thuxsshowkxacbfjdaks.supabase.co/functions/v1/rsi-grok";
+export const RSI_GROK_URL = "https://ojntnbaakfowmnrsetbb.supabase.co/functions/v1/rsi-grok";
 
 export type GrokMode = "server" | "key";
 

@@ -47,6 +47,7 @@ describe("llm connection", () => {
   it("routes server mode to the RSI function and key mode to api.x.ai", () => {
     const server: LlmSettings = { mode: "server", apiKey: "xai-test-secret", passcode: "rsi-pass-secret", model: "grok-4.7" };
     const viaServer = grokRequest({ settings: server, messages });
+    expect(RSI_GROK_URL).toBe("https://ojntnbaakfowmnrsetbb.supabase.co/functions/v1/rsi-grok");
     expect(viaServer.url).toBe(RSI_GROK_URL);
     expect(viaServer.headers["x-rsi-passcode"]).toBe("rsi-pass-secret");
     expect(viaServer.headers.Authorization).toBeUndefined();
