@@ -1,0 +1,4 @@
+{
+  "tickers": ["SPY", "QQQ", "IGV", "NVDA", "MU"],
+  "note": "The weekday GitHub Action fetches this list. SPY, QQQ, and IGV are always included even if removed here. Add a ticker before the desk can price it from the committed snapshot."
+}

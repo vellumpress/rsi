@@ -1,0 +1,61 @@
+{
+  "fetchedAt": "2026-10-02T17:52:56.645Z",
+  "source": "Yahoo Finance chart API (query1.finance.yahoo.com/v8/finance/chart). No API key.",
+  "quotes": {
+    "SPY": {
+      "ticker": "SPY",
+      "price": 769.42,
+      "sma200": 717.0382562255859,
+      "high52w": 779.37,
+      "asOf": "2026-10-02",
+      "currency": "USD",
+      "bars": 502,
+      "previousClose": 763.989990234375,
+      "source": "Yahoo Finance chart"
+    },
+    "QQQ": {
+      "ticker": "QQQ",
+      "price": 749.23,
+      "sma200": 667.2325967407227,
+      "high52w": 754.53,
+      "asOf": "2026-10-02",
+      "currency": "USD",
+      "bars": 502,
+      "previousClose": 742.030029296875,
+      "source": "Yahoo Finance chart"
+    },
+    "IGV": {
+      "ticker": "IGV",
+      "price": 108.2,
+      "sma200": 93.59818290710449,
+      "high52w": 117.76,
+      "asOf": "2026-10-02",
+      "currency": "USD",
+      "bars": 502,
+      "previousClose": 108.2300033569336,
+      "source": "Yahoo Finance chart"
+    },
+    "NVDA": {
+      "ticker": "NVDA",
+      "price": 234.755,
+      "sma200": 200.3831113433838,
+      "high52w": 237.87,
+      "asOf": "2026-10-02",
+      "currency": "USD",
+      "bars": 502,
+      "previousClose": 230.86000061035156,
+      "source": "Yahoo Finance chart"
+    },
+    "MU": {
+      "ticker": "MU",
+      "price": 1079.28,
+      "sma200": 681.519062423706,
+      "high52w": 1255,
+      "asOf": "2026-10-02",
+      "currency": "USD",
+      "bars": 502,
+      "previousClose": 1097.3900146484375,
+      "source": "Yahoo Finance chart"
+    }
+  }
+}
