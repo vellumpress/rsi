@@ -69,8 +69,8 @@ export function chatSystemPrompt(facts: ChatFacts): string {
 export function answerLocally(question: string, facts: ChatFacts): string | null {
   const text = question.trim().toLowerCase();
   if (!text) return null;
-  if (/api key|xai|grok key|how do i add/.test(text)) {
-    return "Settings holds the xAI key. Create an account at console.x.ai, add credits, and create a key on the API Keys page. Paste it here in this browser. It is stored only as rsi.llm and is sent only to api.x.ai. The desk export does not include it.";
+  if (/api key|xai|grok key|passcode|how do i add/.test(text)) {
+    return "Settings holds the Grok connection. RSI server is the default: paste the passcode. It stays in this browser as rsi.llm, is not in an export, and is not written to the log. The other choice is your own xAI key from console.x.ai.";
   }
   if (/what should i do|today|actions/.test(text)) {
     if (facts.actions.length === 0) return `Nothing is due on ${facts.today}. ${facts.fridaySweep ? "This is the Friday sweep." : "The Friday sweep is the full engine pass."} Not financial advice.`;

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { answerLocally, chatSystemPrompt, commitScreened, extractProposal, factsFromActions, screenProposal, type ChatFacts, type Screened } from "../lib/chat";
 import { classifyInstrument } from "../lib/instruments";
 import { reviewManualTrade } from "../lib/guards";
-import { completeGrok, loadLlmSettings } from "../lib/llm";
+import { completeGrok, hasGrokCredential, loadLlmSettings } from "../lib/llm";
 import { moneyAuto } from "../lib/money";
 import { useDesk } from "../state";
 import { GenerateThesis } from "./GenerateThesis";
@@ -30,8 +30,9 @@ export function ChatPanel() {
     setNotice(null);
     const local = answerLocally(question, facts);
     const settings = loadLlmSettings(typeof localStorage === "undefined" ? null : localStorage);
-    if (!settings.apiKey) {
-      const help = local ?? "Add an xAI API key in Settings to talk to Grok. Until then I can answer from the desk: what should I do today, what is the book worth, which rule fired, and how the benchmarks compare. Not financial advice.";
+    if (!hasGrokCredential(settings)) {
+      const how = settings.mode === "server" ? "Add the RSI server passcode in Settings." : "Add an xAI API key in Settings.";
+      const help = local ?? `${how} Until then I can answer from the desk: what should I do today, what is the book worth, which rule fired, and how the benchmarks compare. Not financial advice.`;
       setBubbles((current) => [...current, { role: "user", text: question }, { role: "assistant", text: help }]);
       return;
     }
@@ -39,8 +40,7 @@ export function ChatPanel() {
     setBusy(true);
     try {
       const reply = await completeGrok({
-        apiKey: settings.apiKey,
-        model: settings.model,
+        settings,
         messages: [
           { role: "system", content: chatSystemPrompt(facts) },
           ...bubbles.slice(-6).map((bubble) => ({ role: bubble.role, content: bubble.text })),
