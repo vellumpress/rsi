@@ -1,29 +1,29 @@
 {
-  "fetchedAt": "2026-10-08T22:46:18.845Z",
+  "fetchedAt": "2026-10-09T22:45:42.368Z",
   "source": "Yahoo Finance chart API (query1.finance.yahoo.com/v8/finance/chart). No API key.",
   "quotes": {
     "SPY": {
       "ticker": "SPY",
-      "price": 773.93,
-      "sma200": 719.1625903320313,
+      "price": 778.57,
+      "sma200": 719.6578302001953,
       "high52w": 781.62,
-      "asOf": "2026-10-08",
+      "asOf": "2026-10-09",
       "currency": "USD",
       "bars": 501,
-      "previousClose": 777.219970703125,
+      "previousClose": 773.9299926757812,
       "instrumentType": "ETF",
       "quoteType": null,
       "source": "Yahoo Finance chart"
     },
     "QQQ": {
       "ticker": "QQQ",
-      "price": 747.58,
-      "sma200": 670.2056161499023,
+      "price": 751.27,
+      "sma200": 670.8764254760742,
       "high52w": 762.86,
-      "asOf": "2026-10-08",
+      "asOf": "2026-10-09",
       "currency": "USD",
       "bars": 501,
-      "previousClose": 757.72998046875,
+      "previousClose": 747.5800170898438,
       "instrumentType": "ETF",
       "quoteType": null,
       "source": "Yahoo Finance chart"
