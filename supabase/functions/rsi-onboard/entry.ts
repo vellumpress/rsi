@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.8";
-import { ONBOARD_PLAN, runOnboard, type StoredPlan } from "../../../src/lib/onboardPlan.ts";
+import { MAX_CAPITAL_DOLLARS } from "../../../src/lib/cents.ts";
+import { ONBOARD_PLAN, REBUILD_CONFIRM, reuseDecision, runOnboard, type ExistingDay, type StoredPlan } from "../../../src/lib/onboardPlan.ts";
 import { yahooChartUrl } from "../../../src/lib/yahoo.ts";
 
 const PRIVATE = "This RSI desk is private.";
@@ -48,15 +49,34 @@ Deno.serve(async (req) => {
   const listed = await admin.from("allowlist").select("email").eq("email", email).maybeSingle();
   if (listed.error || listed.data?.email !== email) return json(403, { error: PRIVATE }, origin);
 
-  let body: { amount?: unknown } = {};
+  let body: { amount?: unknown; rebuild?: unknown } = {};
   try {
     body = await req.json();
   } catch {
     return json(400, { error: "Send an amount. No orders were stored." }, origin);
   }
   const amount = typeof body.amount === "number" ? body.amount : Number(body.amount);
+  const rebuild = body.rebuild === true;
   const today = new Date().toISOString().slice(0, 10);
   const userId = data.user.id;
+  if (!Number.isFinite(amount) || amount <= 0) return json(422, { error: "Enter how much to invest. No orders were stored." }, origin);
+  if (amount > MAX_CAPITAL_DOLLARS) return json(422, { error: "That amount is too large to size safely. No orders were stored." }, origin);
+
+  let existing: ExistingDay | null;
+  try {
+    existing = await readToday(admin, userId, today);
+  } catch {
+    return json(422, { error: "Today's plan could not be read. No orders were stored." }, origin);
+  }
+  const decision = reuseDecision({ today, amount, rebuild, existing });
+  if (decision !== "rebuild") {
+    return json(200, {
+      ok: true,
+      plan: ONBOARD_PLAN,
+      sticky: true,
+      notice: decision === "confirm" ? REBUILD_CONFIRM : undefined,
+    }, origin);
+  }
 
   const result = await runOnboard({
     userId,
@@ -75,6 +95,26 @@ Deno.serve(async (req) => {
     orders: result.plan.orders.length,
   }, origin);
 });
+
+async function readToday(admin: ReturnType<typeof createClient>, userId: string, today: string): Promise<ExistingDay | null> {
+  const recs = await admin.from("recommendations").select("id, inputs, created_at").eq("user_id", userId).eq("noted_on", today).order("created_at", { ascending: true });
+  if (recs.error) throw new Error(recs.error.message);
+  const rows = (recs.data ?? []).flatMap((row) => {
+    const inputs = row.inputs && typeof row.inputs === "object" ? row.inputs as { plan?: unknown; run?: unknown; capital?: unknown } : null;
+    if (inputs?.plan !== ONBOARD_PLAN || typeof inputs.run !== "string") return [];
+    return [{ id: String(row.id), run: inputs.run, capital: Number(inputs.capital) }];
+  });
+  if (rows.length === 0) return null;
+  const latestRun = rows[rows.length - 1].run;
+  const latest = rows.filter((row) => row.run === latestRun);
+  const fills = await admin.from("fills").select("recommendation_id").eq("user_id", userId).in("recommendation_id", rows.map((row) => row.id));
+  if (fills.error) throw new Error(fills.error.message);
+  return {
+    notedOn: today,
+    amount: latest[0]?.capital ?? Number.NaN,
+    filledToday: (fills.data ?? []).some((row) => row.recommendation_id),
+  };
+}
 
 async function fetchChart(ticker: string): Promise<unknown> {
   const response = await fetch(yahooChartUrl(ticker), { headers: { "user-agent": "rsi-onboard/1.0" } });

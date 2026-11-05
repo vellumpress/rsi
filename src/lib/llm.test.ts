@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { defaultState, serializeState } from "./storage";
 import { AUTH_OPTIONS, forgetLegacySecrets, LEGACY_LLM_KEY } from "./supabase";
-import { chatCompletionRequest, DEFAULT_GROK_MODEL, deskExportContainsSecret, grokFailureMessage, grokRequest, readSseDelta, resolveModel, RSI_CHAT_URL } from "./llm";
+import { chatCompletionRequest, DEFAULT_GROK_MODEL, deskExportContainsSecret, grokFailureMessage, grokRequest, readSseDelta, resolveModel, RSI_CHAT_URL, SseLineBuffer } from "./llm";
 
 const messages = [{ role: "user" as const, content: "hello" }];
 
@@ -58,6 +58,7 @@ describe("function gates", () => {
     expect(chat.indexOf("Today's plan")).toBeLessThan(chat.indexOf("api.x.ai"));
     expect(onboard.indexOf("allowlist")).toBeLessThan(onboard.indexOf("api.x.ai"));
     expect(onboard).toContain("rsi-onboard-plan-v1");
+    expect(onboard.indexOf("already marked done today")).toBeLessThan(onboard.indexOf("api.x.ai"));
     expect(onboard).not.toContain("Onboarding will not call Grok");
     expect(daily).not.toContain("api.x.ai");
     expect(daily).toContain("SUPABASE_SERVICE_ROLE_KEY");
@@ -74,5 +75,17 @@ describe("function gates", () => {
     expect(body).not.toHaveProperty("api_key");
     const chunk = 'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\ndata: [DONE]\n';
     expect(readSseDelta(chunk)).toBe("Hello");
+  });
+
+  it("keeps a data line split mid-JSON and mid-character", () => {
+    const raw = new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Café"}}]}\n');
+    const splitChar = raw.indexOf(0xc3);
+    expect(raw[splitChar + 1]).toBe(0xa9);
+    expect(splitChar).toBeGreaterThan(20);
+    const sse = new SseLineBuffer();
+    expect(sse.push(raw.slice(0, 20))).toBe("");
+    expect(sse.push(raw.slice(20, splitChar + 1))).toBe("");
+    expect(sse.push(raw.slice(splitChar + 1))).toBe("Café");
+    expect(sse.finish()).toBe("");
   });
 });

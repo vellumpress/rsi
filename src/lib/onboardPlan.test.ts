@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { addDays, weekdayUTC } from "./dates";
-import { ONBOARD_PLAN, parsePlanPick, runOnboard, STARTER_UNIVERSE } from "./onboardPlan";
+import { ONBOARD_PLAN, parsePlanPick, reuseDecision, runOnboard, STARTER_UNIVERSE } from "./onboardPlan";
 
 const TODAY = "2026-10-02";
 const PICK = {
@@ -163,6 +163,26 @@ describe("onboard plan", () => {
     expect(core.every((order) => order.shares === 12 && order.dollars === 1200)).toBe(true);
     expect(conviction.every((order) => order.shares === 37 && order.dollars === 3700)).toBe(true);
     expect(result.plan.orders.some((order) => order.ticker === "SPY" || order.ticker === "QQQ")).toBe(false);
+  });
+
+  it("keeps today's plan unless the amount changes or Rebuild is confirmed", () => {
+    const today = { notedOn: TODAY, amount: 100_000, filledToday: false };
+    expect(reuseDecision({ today: TODAY, amount: 100_000, rebuild: false, existing: null })).toBe("rebuild");
+    expect(reuseDecision({ today: TODAY, amount: 100_000, rebuild: false, existing: today })).toBe("reuse");
+    expect(reuseDecision({ today: TODAY, amount: 100_000.001, rebuild: false, existing: today })).toBe("reuse");
+    expect(reuseDecision({ today: TODAY, amount: 80_000, rebuild: false, existing: today })).toBe("rebuild");
+    expect(reuseDecision({ today: TODAY, amount: 100_000, rebuild: true, existing: today })).toBe("rebuild");
+    const filled = { ...today, filledToday: true };
+    expect(reuseDecision({ today: TODAY, amount: 100_000, rebuild: false, existing: filled })).toBe("reuse");
+    expect(reuseDecision({ today: TODAY, amount: 80_000, rebuild: false, existing: filled })).toBe("confirm");
+    expect(reuseDecision({ today: TODAY, amount: 80_000, rebuild: true, existing: filled })).toBe("rebuild");
+    expect(reuseDecision({ today: TODAY, amount: 100_000, rebuild: true, existing: filled })).toBe("rebuild");
+    expect(reuseDecision({
+      today: TODAY,
+      amount: 80_000,
+      rebuild: false,
+      existing: { notedOn: "2026-10-01", amount: 100_000, filledToday: true },
+    })).toBe("rebuild");
   });
 
   it("rejects a pick that is not 8 core names and 3 to 5 themes", () => {
