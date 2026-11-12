@@ -50,7 +50,7 @@ export function chatCompletionRequest(input: {
   };
 }
 
-/** Pulls text deltas out of one SSE chunk. `[DONE]` and non-data lines contribute nothing. */
+/** Pulls text deltas out of complete SSE lines. `[DONE]` and non-data lines contribute nothing. */
 export function readSseDelta(chunk: string): string {
   let text = "";
   for (const line of chunk.split("\n")) {
@@ -67,6 +67,30 @@ export function readSseDelta(chunk: string): string {
     }
   }
   return text;
+}
+
+/**
+ * Holds an incomplete SSE line and a split multibyte character until the next chunk.
+ * Only lines that end in a newline are parsed.
+ */
+export class SseLineBuffer {
+  private decoder = new TextDecoder();
+  private pending = "";
+
+  push(bytes: Uint8Array): string {
+    this.pending += this.decoder.decode(bytes, { stream: true });
+    const lines = this.pending.split("\n");
+    this.pending = lines.pop() ?? "";
+    return lines.length ? readSseDelta(lines.join("\n")) : "";
+  }
+
+  finish(): string {
+    this.pending += this.decoder.decode();
+    const tail = this.pending;
+    this.pending = "";
+    if (!tail.trim()) return "";
+    return readSseDelta(tail.endsWith("\n") ? tail : `${tail}\n`);
+  }
 }
 
 export function grokRequest(input: {
@@ -148,13 +172,14 @@ export async function completeGrok(input: {
     }
     const reader = response.body?.getReader();
     if (!reader) throw new Error("Grok returned an empty reply. No card and no trade was written.");
-    const decoder = new TextDecoder();
+    const sse = new SseLineBuffer();
     let text = "";
     for (;;) {
       const step = await reader.read();
       if (step.done) break;
-      text += readSseDelta(decoder.decode(step.value, { stream: true }));
+      text += sse.push(step.value);
     }
+    text += sse.finish();
     if (!text.trim()) throw new Error("Grok returned an empty reply. No card and no trade was written.");
     return text;
   }
