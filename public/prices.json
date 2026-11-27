@@ -1,11 +1,11 @@
 {
-  "fetchedAt": "2026-11-26T04:17:32.836Z",
+  "fetchedAt": "2026-11-27T04:26:30.819Z",
   "source": "Yahoo Finance chart API (query1.finance.yahoo.com/v8/finance/chart). No API key.",
   "quotes": {
     "SPY": {
       "ticker": "SPY",
       "price": 716.7,
-      "sma200": 730.7721255493165,
+      "sma200": 730.7721258544922,
       "high52w": 781.62,
       "asOf": "2026-11-25",
       "currency": "USD",
@@ -18,7 +18,7 @@
     "QQQ": {
       "ticker": "QQQ",
       "price": 633.93,
-      "sma200": 682.5439297485351,
+      "sma200": 682.5439315795899,
       "high52w": 762.86,
       "asOf": "2026-11-25",
       "currency": "USD",
